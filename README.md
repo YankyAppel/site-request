@@ -44,7 +44,7 @@ Make your own reasons in Settings under **Reasons**: add, edit, delete and move 
 
 On some block pages there is no button to request the site (for example a **Locked Web Category** page, where only **Report miscategorization** is offered). On those pages the extension adds a **Request this site** box right on the page, under the block details and above **Report miscategorization**. You don't need to open the extension.
 
-The box has everything the popup has: the blocked address, **Whole site** / **Just this page**, your reason buttons, **Add details (optional)** (up to 500 characters) and **Send request**. It sends the same way as the popup: the same Gmail email, your saved address, your request history, the approval check and the reminder. If no address is saved yet, the box asks for it first (**Save**). After sending it shows **Request sent** with the time, and the request's status (**Waiting for approval**, or **Approved** once the check sees the site open). If you already requested the site, it says so.
+The box has everything the popup has: the blocked address, **Whole site** / **Just this page**, your reason buttons, **Add details (optional)** (up to 500 characters) and **Send request**. It sends the same way as the popup: the same Gmail email, your saved address, your request history, the approval check and the reminder. If no address is saved yet, the box asks for it first (**Save**). After sending it shows **Request sent** with the time, and the request's status (**Waiting for approval**, or **Approved** once the check sees the site open).
 
 When the block page has its own request button, the box stays hidden, so you use the page's own button. The extension looks for a visible button, link or form that asks to request, unblock or allow the site (not **Report miscategorization**, which is on every block page). It looks again for a few seconds after the page loads, in case the page's button appears late. A **Locked** page is read as having no request option of its own, unless it clearly shows a request button.
 
@@ -52,6 +52,18 @@ Settings:
 
 - **Show Request button on block pages** (on by default).
 - **Only when the page has no request option of its own** (on by default). Turn it off to show the box on every block page.
+
+## Already requested
+
+When you already requested a site, the extension makes it clear, so you don't send the same request twice by mistake.
+
+- **On the block page**, the box opens with a coloured bar at the top: a check mark, **Already requested** and the date and time. Under it: **Waiting for approval** (amber) or **Approved** (green, with a **Reload page** button that opens the site), the reason you used, and whether you asked for the **whole site** or **this page**. If you requested it more than once: **Requested 3 times · last Nov 10, 3:08 PM**.
+- The form is folded away. The button reads **Send another request**; click it to open the form again, then **Send again**. If your earlier request was for one page only, the box says **Earlier request was for this page only** and picks **Whole site** for you.
+- **In the popup**, the same banner (**Already requested**, the date, the status) sits above the form, and the button reads **Send another request**.
+- **On the toolbar icon**, a tab whose site you requested and is still waiting shows a small blue **✓**, so you can see it without opening anything. The red **NEW** (an update) and the amber count (blocked parts on the page) come first; the ✓ shows when neither is there. It goes away once the request is approved.
+- **Right-click** still sends right away; the notification says **Sent again (2nd request)**.
+
+A request counts for a page when it asked for that exact page, or for the whole site the page is on. A request for one page does not count for other pages of the same site.
 
 ## Right-click
 
@@ -65,7 +77,7 @@ Sometimes a site opens but looks broken: its pictures, videos, styles or scripts
 
 Open the popup to see **This page has N blocked parts**, with each address and a checkbox. Several addresses under one name are grouped as a wildcard (for example `*.cdn.example.com`). Common ad and tracker addresses are listed but left unticked. **Request all** sends one email with every ticked address.
 
-While an update is waiting, the icon shows the red **NEW** instead; the popup still shows both.
+While an update is waiting, the icon shows the red **NEW** instead; the popup still shows both. Icon order: red **NEW**, then the amber count, then the blue **✓** for an already requested site.
 
 ## Reminder
 

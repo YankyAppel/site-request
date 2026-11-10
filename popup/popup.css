@@ -169,3 +169,23 @@ button.link.small:disabled { color: #73788F; cursor: default; text-decoration: n
 .history li .dw { flex: 1; min-width: 0; }
 .history li .dw .d { display: block; }
 .history li .r { display: block; font-size: 11px; color: #73788F; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Already requested (1.5.1) */
+.already { margin: 12px 18px 0; padding-bottom: 8px; border: 1px solid #006aff; border-radius: 5px; overflow: hidden; font-size: 12px; line-height: 1.35; }
+.already.ok { border-color: #13703f; }
+.already-head { margin: 0; padding: 7px 10px; background: #006aff; color: #fff; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.already.ok .already-head { background: #13703f; }
+.already-head b { font-size: 13px; }
+.already-head .when { opacity: .92; flex-basis: 100%; padding-left: 21px; margin-top: -2px; }
+.already-head .ck { flex: none; width: 15px; height: 15px; border-radius: 50%; background: #fff; position: relative; }
+.already-head .ck:after { content: ''; position: absolute; left: 5px; top: 2.5px; width: 3.5px; height: 7px; border: solid #006aff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.already.ok .already-head .ck:after { border-color: #13703f; }
+.already-st { margin: 8px 10px 0; }
+.already .pill { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; border-radius: 10px; padding: 1px 8px 1px 6px; background: #FFF3D6; color: #9a5b00; }
+.already .pill:before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.already .pill.ok { background: #e9f7ef; color: #13703f; }
+.already-meta { margin: 5px 10px 0; color: #3b3e4f; overflow-wrap: anywhere; }
+.already-meta.times { color: #73788F; }
+.already-meta.hint { color: #73788F; font-style: italic; }
+#request.again { color: #3b3e4f; font-weight: 700; }
+#request.again:before { opacity: .55; }

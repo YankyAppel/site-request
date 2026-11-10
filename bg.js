@@ -8,7 +8,8 @@ import {
   classify, applyCheck, isDue, probeTargets, notificationId, urlFromNotificationId, entryKey, checkKey
 } from './shared/approval.js';
 import { blockSignal, needsBodyCheck, bodySignal, newRecord, addSignal, summary, hostOf } from './shared/parts.js';
-import { normalizeReasons, chosenReason, defaultReasonId } from './shared/reasons.js';
+import { normalizeReasons, chosenReason, defaultReasonId, reasonSummary } from './shared/reasons.js';
+import { requestedInfo, matchRequests, countLine, metaLine, fmtWhen, ordinal, badgeFor } from './shared/requested.js';
 import { dueReminders, reminderId, keyFromReminderId, waitingLabel, REMIND_EVERY_MIN } from './shared/reminder.js';
 
 const JOB_TIMEOUT_MIN = 1.5;
@@ -51,6 +52,7 @@ async function addHistory(job) {
     kind: job.kind, scope: job.scope, subject: job.subject, target: job.target
   };
   if (job.reason) entry.reason = job.reason;
+  if (job.nth > 1) entry.nth = job.nth;
   if (job.kind === 'parts') {
     entry.items = job.items;
     entry.samples = job.samples;
@@ -102,9 +104,11 @@ async function doStartRequest(rawUrl, reason, fromBlockPage, scope, via, mine) {
   if (!isEmail(s.to)) return { ok: false, error: 'no_address' };
   const choice = await getChoice(mine);
   const mail = buildEmail(s, url, new Date(), reason, scope, choice);
+  const { history } = await chrome.storage.local.get({ history: [] });
   return sendMail(s, mail, {
     kind: 'site', url, domain: mail.domain, fromBlockPage: !!fromBlockPage,
-    scope: mail.scope, target: mail.target, via: via || 'popup', reason: choice
+    scope: mail.scope, target: mail.target, via: via || 'popup', reason: choice,
+    nth: matchRequests(history, url).length + 1
   });
 }
 
@@ -621,7 +625,8 @@ async function notifyJobResult(job) {
   await chrome.notifications.create(JOB_NOTE + job.id, {
     type: 'basic',
     iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-    title: what + (ok ? ' sent: ' : ' not sent: ') + (job.target && job.scope === 'site' ? job.target : job.domain || ''),
+    title: (ok && job.kind === 'site' && job.nth > 1 ? 'Sent again (' + ordinal(job.nth) + ' request): ' : what + (ok ? ' sent: ' : ' not sent: ')) +
+      (job.target && job.scope === 'site' ? job.target : job.domain || ''),
     message: msg,
     priority: ok ? 0 : 1
   });
@@ -782,33 +787,67 @@ function saveRec(tabId, rec) {
   return chrome.storage.session.set({ ['hb_' + tabId]: rec });
 }
 
-async function setTabBadge(tabId, n) {
+// The address a tab is about: the blocked address on a block page, else the page itself.
+async function tabAddress(tabId, hint) {
+  let url = hint || '';
+  if (!url) {
+    try { url = (await chrome.tabs.get(tabId)).url || ''; } catch (e) { return ''; }
+  }
+  if (!/^https?:/i.test(url)) return '';
+  if (!isBlockPage(url)) return url;
+  let u = extractBlockedUrl(url);
+  if (!u) {
+    const k = 'nav_' + tabId;
+    const s = await chrome.storage.session.get(k);
+    u = cleanCandidate(s[k]);
+  }
+  return u || '';
+}
+
+// One tab's icon. Order (shared/requested.js badgeFor): red NEW (a new version) > amber count
+// (blocked parts on the page) > blue check (this site was already requested, still waiting).
+async function setTabBadge(tabId, n, hint) {
   try {
-    if (updatePending) {
-      await chrome.action.setBadgeText({ tabId, text: 'NEW' });
-      await chrome.action.setBadgeBackgroundColor({ tabId, color: '#d93a3a' });
-      if (chrome.action.setBadgeTextColor) await chrome.action.setBadgeTextColor({ tabId, color: '#ffffff' });
-      await chrome.action.setTitle({ tabId, title: 'Site Request: a new version is available' + (n ? ' \u00b7 ' + n + (n === 1 ? ' blocked part' : ' blocked parts') + ' on this page' : '') });
-      return;
+    const url = await tabAddress(tabId, hint);
+    let requested = null;
+    if (url) {
+      const { history } = await chrome.storage.local.get({ history: [] });
+      requested = requestedInfo(history, url);
     }
-    await chrome.action.setBadgeText({ tabId, text: n ? String(Math.min(n, 99)) : '' });
-    if (n) {
-      await chrome.action.setBadgeBackgroundColor({ tabId, color: AMBER });
-      if (chrome.action.setBadgeTextColor) await chrome.action.setBadgeTextColor({ tabId, color: '#1d1e26' });
+    const b = badgeFor({ update: updatePending, parts: n, requested });
+    await chrome.action.setBadgeText({ tabId, text: b.text });
+    if (b.text) {
+      await chrome.action.setBadgeBackgroundColor({ tabId, color: b.color });
+      if (chrome.action.setBadgeTextColor) await chrome.action.setBadgeTextColor({ tabId, color: b.textColor });
     }
-    await chrome.action.setTitle({ tabId, title: n ? 'Site Request: ' + n + (n === 1 ? ' blocked part' : ' blocked parts') + ' on this page' : 'Site Request' });
+    await chrome.action.setTitle({ tabId, title: b.title });
   } catch (e) { /* tab closed */ }
 }
 
 async function refreshTabBadges() {
   const all = await chrome.storage.session.get(null);
-  for (const k of Object.keys(all)) {
-    if (!k.startsWith('hb_')) continue;
-    const tabId = Number(k.slice(3));
-    const rec = tabRecs.get(tabId) || all[k];
-    await setTabBadge(tabId, summary(rec).count);
+  let tabs = [];
+  try { tabs = await chrome.tabs.query({}); } catch (e) { /* no tabs */ }
+  for (const t of tabs) {
+    if (t.id == null || t.id < 0) continue;
+    const rec = tabRecs.get(t.id) || all['hb_' + t.id];
+    await setTabBadge(t.id, rec ? summary(rec).count : 0, t.url);
   }
 }
+
+// A new request, an approval or a deleted history row changes the check on the icons.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.history) refreshTabBadges().catch(() => {});
+});
+
+// The block page is a single-page app: its address can change without a new page load.
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  if (!info.url && info.status !== 'complete') return;
+  withTab(tabId, async () => {
+    const rec = await loadRec(tabId);
+    await setTabBadge(tabId, rec ? summary(rec).count : 0, (tab && tab.url) || info.url);
+  });
+});
 
 function onMainFrame(d) {
   if (d.tabId < 0 || d.type !== 'main_frame') return;
@@ -816,7 +855,7 @@ function onMainFrame(d) {
     const rec = newRecord(/^https?:/i.test(d.url) ? d.url : '', Date.now());
     tabRecs.set(d.tabId, rec);
     await saveRec(d.tabId, rec);
-    await setTabBadge(d.tabId, 0);
+    await setTabBadge(d.tabId, 0, d.url);
   });
 }
 
@@ -940,8 +979,19 @@ async function panelInfo(msg, sender) {
     reasons: list.map(r => ({ id: r.id, label: r.label, text: r.text })),
     defaultReason: defaultReasonId(list, st.defaultReason),
     settings: { blockPanel: st.blockPanel !== false, blockPanelAuto: st.blockPanelAuto !== false },
-    last: historyNote(hit)
+    last: historyNote(hit),
+    requested: url ? requestedView(st.history, url) : null
   };
+}
+
+// "Already requested" for the block page box: the words are made here, where the shared helpers live.
+function requestedView(history, url) {
+  const d = requestedInfo(history, url);
+  if (!d) return null;
+  const hit = matchRequests(history, url)[0];
+  return Object.assign(d, {
+    when: fmtWhen(d.at), countLine: countLine(d), meta: metaLine(d, reasonSummary(hit && hit.reason))
+  });
 }
 
 async function jobStatus(id) {
@@ -949,11 +999,13 @@ async function jobStatus(id) {
   const job = jobs[id];
   if (!job) return { ok: false };
   let last = null;
+  let requested = null;
   if (job.state === 'sent') {
     const { history } = await chrome.storage.local.get({ history: [] });
     last = historyNote(history.find(h => h.id === job.id) || history.find(h => h.url === job.url));
+    if (job.kind === 'site') requested = requestedView(history, job.url);
   }
-  return { ok: true, state: job.state, error: job.error || '', ended: job.ended || 0, last };
+  return { ok: true, state: job.state, error: job.error || '', ended: job.ended || 0, last, requested };
 }
 
 async function saveTo(to) {

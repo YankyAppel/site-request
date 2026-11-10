@@ -2,6 +2,7 @@ import { compareVersions } from '../shared/update.js';
 import { checkKey } from '../shared/approval.js';
 import { isBlockPage, extractBlockedUrl, cleanCandidate, cleanReason, domainOf, DEFAULTS, isEmail, scopeTarget } from '../shared/url.js';
 import { normalizeReasons, defaultReasonId, reasonSummary, cleanDetails, DETAILS_MAX } from '../shared/reasons.js';
+import { requestedInfo, matchRequests, fmtWhen, countLine, metaLine } from '../shared/requested.js';
 
 const $ = id => document.getElementById(id);
 let currentJobId = null;
@@ -140,17 +141,35 @@ async function loadHistory() {
   return history;
 }
 
-async function noteIfRequestedBefore(url) {
+// "Already requested · date · status" above the form when history has a request covering this address.
+let already = null;
+async function renderAlready() {
+  const url = cleanCandidate($('url').value);
   const { history } = await chrome.storage.local.get({ history: [] });
-  const hit = history.find(h => h.url === url);
-  const note = $('note');
-  if (hit) {
-    note.hidden = false;
-    note.textContent = 'You already requested this on ' +
-      new Date(hit.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + '.';
-  } else {
-    note.hidden = true;
+  already = url ? requestedInfo(history, url) : null;
+  const box = $('already');
+  box.hidden = !already;
+  $('note').hidden = true;
+  if (already) {
+    const ok = already.status === 'approved';
+    const hit = matchRequests(history, url)[0];
+    box.className = 'already' + (ok ? ' ok' : '');
+    $('alreadyWhen').textContent = fmtWhen(already.at);
+    $('alreadyStatus').className = 'pill' + (ok ? ' ok' : '');
+    $('alreadyStatus').textContent = ok ? 'Approved' : 'Waiting for approval';
+    $('alreadyMeta').textContent = metaLine(already, reasonSummary(hit && hit.reason)) + (!ok && already.remindedAt ? ' \u00b7 reminder sent' : '');
+    const cl = countLine(already);
+    $('alreadyCount').hidden = !cl;
+    $('alreadyCount').textContent = cl;
+    $('alreadyHint').hidden = !already.pageOnly;
   }
+  renderRequestButton();
+}
+
+function renderRequestButton() {
+  const btn = $('request');
+  btn.classList.toggle('again', !!already);
+  btn.textContent = already ? 'Send another request' : currentScope() === 'page' ? 'Request just this page' : 'Request this site';
 }
 
 let blockReason = '';
@@ -226,10 +245,10 @@ async function init() {
     $('reason').hidden = false;
     $('reason').textContent = 'Why: ' + blockReason;
   }
-  if (url) noteIfRequestedBefore(url);
-  else $('url').focus();
+  if (!url) $('url').focus();
   if (pre && pre.scope === 'page') document.querySelector('input[name="scope"][value="page"]').checked = true;
   renderScope();
+  await renderAlready();
   if (mode === 'page' && !pre) loadParts();
   await loadReasons();
 
@@ -307,7 +326,13 @@ $('request').addEventListener('click', async () => {
 $('url').addEventListener('keydown', e => {
   if (e.key === 'Enter') $('request').click();
 });
-$('url').addEventListener('input', () => { $('note').hidden = true; renderScope(); });
+let alreadyTimer = 0;
+$('url').addEventListener('input', () => {
+  $('note').hidden = true;
+  renderScope();
+  clearTimeout(alreadyTimer);
+  alreadyTimer = setTimeout(() => renderAlready(), 250);
+});
 
 // ---- Whole site / Just this page ----
 function currentScope() {
@@ -320,7 +345,7 @@ function renderScope() {
   $('scopeRow').hidden = !url;
   $('scopeNote').hidden = !url;
   const scope = currentScope();
-  $('request').textContent = scope === 'page' ? 'Request just this page' : 'Request this site';
+  renderRequestButton();
   if (url) {
     $('scopeNote').textContent = scope === 'page'
       ? 'Only this address, not the rest of the site.'
@@ -484,6 +509,7 @@ $('openSettings').addEventListener('click', () => chrome.runtime.openOptionsPage
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.to && isEmail(changes.to.newValue)) $('toSetup').hidden = true;
   if ((area === 'local' && changes.history) || (area === 'session' && changes.checking)) loadHistory();
+  if (area === 'local' && changes.history) renderAlready();
   if (area === 'session' && changes.status && changes.status.newValue) {
     const job = changes.status.newValue;
     if (!currentJobId || job.id === currentJobId) renderJob(job);

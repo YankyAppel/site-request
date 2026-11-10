@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Site Request",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2dW5apuhyj/IXCn+XaGGtfm6atq2vqFrfs1ceghmlIkMR7hS/x4xYKbSgT/6pFEaUptDJhwWzVNutFjZ+HsbB6WNcIydl82gqqXIe3OI6B5YtN02sR2OwVT/KO0rdMF/OMN/mA8kdmqWNNjWhubT4zpQnd9b218zTsLH51QM6a1Rtye0makM584Lg+kZ2N10DbtTsSEIguqz+OZDLWvC0Bzpdcq2n5nsyBQpPykxc/VG3g145GdzjNyc1NS+CcgLFQb//EeQNA8GiGIjCjMQmAsnL9ib4t5fsGyHSzxXYrKnGl93I5sCnnyufbhz4lVYf/vAa7c8U0cbEbocEtwrqwIDAQAB",
   "description": "Request access to a blocked site by email, in one click.",
   "permissions": [

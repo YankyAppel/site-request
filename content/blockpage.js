@@ -177,6 +177,8 @@
   const DETAILS_MAX = 500;
   const MARK = '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#1a7db6"/><path fill="#fff" d="M5.6 6.1c-.2-.6.4-1.1 1-.8l12 5.9c.5.3.5 1 0 1.3l-12 5.9c-.6.3-1.2-.2-1-.8L7.4 12 5.6 6.1zm3.2 6.6-1.3 3.8 8.6-4.3-8.6-4.4 1.3 3.9H13v1H8.8z"/></svg>';
 
+  const CHECK = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#fff"/><path d="M7 12.4l3.2 3.2L17.2 8.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
   const CSS = `
 :host { all: initial; display: block; width: 100%; max-width: 560px; margin: 18px auto 14px; text-align: left; }
 * { box-sizing: border-box; }
@@ -215,8 +217,6 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
 .btn:hover { background: #156a9c; }
 .btn:active { background: #115a85; }
 .btn[disabled] { background: #9cc9e3; cursor: default; }
-.btn.light { background: #F1F2F7; color: #1d1e26; font-weight: 400; }
-.btn.light:hover { background: #e6e8f0; }
 .btn.small { font-size: 13px; padding: 7px 12px; }
 .tobox { margin-top: 12px; padding: 10px; border: 1px solid #f2c94c; background: #FFFBEA; border-radius: 6px; }
 .tobox .row { margin-top: 6px; }
@@ -233,6 +233,30 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
 .tag.ok { background: #e3f4ea; color: #13703f; }
 .goes { margin-left: auto; font-size: 11.5px; color: #73788F; overflow-wrap: anywhere; text-align: right; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+.card.done { border-color: #1a7db6; }
+.card.done.ok { border-color: #13703f; }
+.bar { display: flex; align-items: center; gap: 8px; margin: -14px -16px 10px; padding: 10px 16px; border-radius: 9px 9px 0 0;
+  background: #1a7db6; color: #fff; font-size: 14px; }
+.card.ok .bar { background: #13703f; }
+.bar svg { display: block; flex: none; }
+.bar b { font-weight: 700; font-size: 15px; }
+.bar .when { font-size: 13px; opacity: .92; }
+.bar .s { margin-left: auto; font-size: 12px; opacity: .8; }
+.dinfo { margin: 0 0 10px; }
+.dline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; border-radius: 12px; padding: 3px 10px 3px 8px; }
+.pill:before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.pill.wait { background: #FFF3D6; color: #9a5b00; }
+.pill.ok { background: #e3f4ea; color: #13703f; }
+.btn.go { background: #13703f; }
+.btn.go:hover { background: #0f5c33; }
+.meta { margin: 6px 0 0; font-size: 12.5px; color: #3b3e4f; overflow-wrap: anywhere; }
+.meta.times { color: #73788F; font-size: 12px; }
+.bar svg path { stroke: #1a7db6; }
+.card.ok .bar svg path { stroke: #13703f; }
+.hint { margin: 10px 0 0; padding: 6px 9px; font-size: 12px; color: #3b3e4f; background: #F6F7FB; border-radius: 6px; }
+.btn.light { border: 1px solid #d0d2e0; color: #1a7db6; font-weight: 700; background: #fff; }
+.btn.light:hover { background: #F1F7FB; border-color: #9cc9e3; }
 `;
 
   let shadow = null;
@@ -242,6 +266,8 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
   let jobId = '';
   let pollTimer = 0;
   let sentAt = 0;
+  let expanded = false;     // "Send another request" opens the form again
+  let busy = false;
   const $ = id => shadow.getElementById(id);
 
   function fmtTime(ms) {
@@ -252,6 +278,11 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
     const today = new Date();
     if (d.toDateString() === today.toDateString()) return 'today at ' + fmtTime(ms);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' at ' + fmtTime(ms);
+  }
+  // "Nov 10, 3:08 PM" (the same words as shared/requested.js fmtWhen, in this page's own clock)
+  function fmtWhen(ms) {
+    const d = new Date(ms);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' + fmtTime(ms);
   }
   function statusTag(last) {
     if (!last) return '';
@@ -281,10 +312,19 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
     shadow = host.attachShadow({ mode: 'open' });
     shadow.innerHTML = '<style>' + CSS + '</style>' +
       '<div class="card" id="card" role="region" aria-label="Site Request">' +
-        '<div class="head">' + MARK + '<span class="t">Request this site</span><span class="s">Site Request</span></div>' +
+        '<div class="bar" id="bar" hidden>' + CHECK + '<b>Already requested</b><span class="when" id="doneWhen"></span><span class="s">Site Request</span></div>' +
+        '<div class="dinfo" id="dinfo" hidden>' +
+          '<div class="dline"><span class="pill wait" id="doneStatus">Waiting for approval</span>' +
+          '<button class="btn small go" id="reload" type="button" hidden>Reload page</button></div>' +
+          '<p class="meta" id="doneMeta"></p>' +
+          '<p class="meta times" id="doneCount" hidden></p>' +
+        '</div>' +
+        '<div class="head" id="head">' + MARK + '<span class="t">Request this site</span><span class="s">Site Request</span></div>' +
         '<div class="addr" id="addr"></div>' +
         '<input class="in" id="urlIn" type="text" placeholder="Site address, e.g. example.com" hidden>' +
         '<p class="note" id="prev" hidden></p>' +
+        '<div id="form">' +
+        '<p class="hint" id="pageHint" hidden>Earlier request was for this page only</p>' +
         '<div class="scope" id="scope" role="radiogroup" aria-label="What to request">' +
           '<label><input type="radio" name="scope" value="site" checked><span>Whole site</span></label>' +
           '<label><input type="radio" name="scope" value="page"><span>Just this page</span></label>' +
@@ -295,6 +335,7 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
         '<label class="l" for="details">Add details <span style="font-weight:400;color:#73788F">(optional)</span></label>' +
         '<textarea id="details" maxlength="' + DETAILS_MAX + '" rows="1"></textarea>' +
         '<p class="count" id="count" hidden></p>' +
+        '</div>' +
         '<div class="tobox" id="tobox" hidden>' +
           '<label class="l" for="toIn" style="margin-top:0">Send requests to (email)</label>' +
           '<div class="row"><input class="in" id="toIn" type="email" placeholder="requests@example.com"><button class="btn small" id="toSave" type="button">Save</button></div>' +
@@ -311,6 +352,7 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
     $('toIn').addEventListener('keydown', e => { if (e.key === 'Enter') $('toSave').click(); });
     $('toSave').addEventListener('click', saveTo);
     $('send').addEventListener('click', send);
+    $('reload').addEventListener('click', () => { const u = (info && info.url) || ''; if (u) location.href = u; });
     $('openMail').addEventListener('click', () => { if (jobId) chrome.runtime.sendMessage({ type: 'open_compose', id: jobId }); });
     // Keys typed in the panel stay in the panel (the page may have its own shortcuts).
     for (const ev of ['keydown', 'keyup', 'keypress']) shadow.addEventListener(ev, e => e.stopPropagation());
@@ -373,14 +415,67 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
   function renderAddress() {
     const has = info && info.hasTo;
     $('tobox').hidden = !!has;
-    $('send').disabled = !has;
+    $('send').disabled = !has || busy;
     $('send').title = has ? '' : 'Save the email address first';
     $('goes').textContent = has ? 'Goes to ' + info.to : 'Save the email address first';
   }
+  // From 1.5.1 the "Already requested" bar says it; this older line stays hidden.
   function renderPrev() {
-    const last = info && info.last;
-    $('prev').hidden = !last || !!jobId;
-    if (last && !jobId) $('prev').innerHTML = 'You already requested this ' + esc(fmtDay(last.at)) + '.' + statusTag(last);
+    $('prev').hidden = true;
+  }
+
+  // ---------- Already requested (1.5.1) ----------
+  function requested() { return (info && info.requested) || null; }
+  function folded() { return !!requested() && !expanded; }
+
+  function renderDone() {
+    const d = requested();
+    $('bar').hidden = !d;
+    $('dinfo').hidden = !d;
+    $('head').hidden = !!d;
+    const ok = !!d && d.status === 'approved';
+    $('card').className = 'card' + (d ? ' done' + (ok ? ' ok' : '') : '');
+    host.dataset.requested = d ? (ok ? 'approved' : 'pending') : '';
+    if (!d) { $('pageHint').hidden = true; return; }
+    $('doneWhen').textContent = fmtWhen(d.at);
+    $('doneStatus').className = 'pill ' + (ok ? 'ok' : 'wait');
+    $('doneStatus').textContent = ok ? 'Approved' : 'Waiting for approval';
+    $('reload').hidden = !ok || !(info && info.url);
+    $('doneMeta').textContent = (d.meta || '') + (!ok && d.remindedAt ? ' \u00b7 reminder sent' : '');
+    const times = d.count > 1 ? 'Requested ' + d.count + ' times \u00b7 last ' + fmtWhen(d.at) : '';
+    $('doneCount').hidden = !times;
+    $('doneCount').textContent = times;
+    $('pageHint').hidden = !d.pageOnly;
+  }
+
+  function renderMode() {
+    renderDone();
+    const send = $('send');
+    $('form').hidden = folded();
+    if (folded()) {
+      send.textContent = 'Send another request';
+      send.className = 'btn light';
+      send.disabled = busy;
+      send.title = '';
+      $('tobox').hidden = true;
+      return;
+    }
+    send.textContent = requested() ? 'Send again' : 'Send request';
+    send.className = 'btn';
+    renderAddress();
+  }
+
+  function expand() {
+    touched = true;
+    expanded = true;
+    const d = requested();
+    if (d && d.pageOnly) {
+      const site = shadow.querySelector('input[name="scope"][value="site"]');
+      if (site) site.checked = true;
+    }
+    renderScope();
+    renderMode();
+    $('status').hidden = true;
   }
   function render(first) {
     if (first) {
@@ -400,7 +495,7 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
     renderChips();
     renderScope();
     renderCount();
-    renderAddress();
+    renderMode();
     renderPrev();
   }
 
@@ -434,10 +529,12 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
 
   async function send() {
     if ($('send').disabled) return;
+    if (folded()) { expand(); return; }
     touched = true;
     const url = currentUrl();
     if (!url) { showStatus('error', esc(MESSAGES.bad_url), false); $('urlIn').focus(); return; }
     const details = $('details').value;
+    busy = true;
     $('send').disabled = true;
     showStatus('sending', 'Sending your request\u2026', false);
     const fromBlock = !!(info && info.url && url === info.url);
@@ -446,6 +543,7 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
       scope: scope(), mine: { id: chosen, details }
     });
     if (!r || !r.ok) {
+      busy = false;
       $('send').disabled = false;
       showStatus('error', esc(MESSAGES[r && r.error] || 'Something went wrong.'), false);
       if (r && r.error === 'no_address') { info.hasTo = false; renderAddress(); $('toIn').focus(); }
@@ -464,12 +562,17 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
       if (r && r.ok && r.state === 'sent') {
         sentAt = r.ended || Date.now();
         if (r.last) info.last = r.last;
+        if (r.requested) info.requested = r.requested;
+        busy = false;
+        expanded = false;      // back to the "Already requested" view, with the new count
+        $('details').value = '';
+        renderCount();
+        renderMode();
         renderSent();
-        $('send').disabled = false;
-        $('send').textContent = 'Send again';
         return;
       }
       if (r && r.ok && r.state === 'error') {
+        busy = false;
         $('send').disabled = false;
         const e = String(r.error || '');
         const t = MESSAGES[e] || (e.startsWith('gmail_said:') ? 'Gmail said: ' + e.slice(11).trim() : 'Something went wrong.');
@@ -477,6 +580,7 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
         return;
       }
       if (n < 240) poll(n + 1);
+      else { busy = false; renderMode(); }
     }, n ? 600 : 300);
   }
 

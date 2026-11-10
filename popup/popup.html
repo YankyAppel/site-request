@@ -24,6 +24,13 @@
   </div>
 </div>
 <main>
+  <div class="already" id="already" hidden>
+    <p class="already-head"><span class="ck" aria-hidden="true"></span><b>Already requested</b><span class="when" id="alreadyWhen"></span></p>
+    <p class="already-st"><span class="pill" id="alreadyStatus">Waiting for approval</span></p>
+    <p class="already-meta" id="alreadyMeta"></p>
+    <p class="already-meta times" id="alreadyCount" hidden></p>
+    <p class="already-meta hint" id="alreadyHint" hidden>Earlier request was for this page only</p>
+  </div>
   <section class="request divider">
     <p class="label" id="mode">This page</p>
     <input id="url" type="text" spellcheck="false" autocomplete="off" placeholder="https://example.com">
