@@ -56,7 +56,7 @@
     <section>
       <label for="body">Message</label>
       <textarea id="body" rows="11"></textarea>
-      <p class="hint">You can use {url} for the full address, {domain} for the site name, {date} for the date and time, and {reason} for the reason shown on the block page (a line with {reason} is left out when there is none).</p>
+      <p class="hint">You can use {url} for the full address, {domain} for the site name, {target} for what you ask for (the whole site as *.example.com, or just the page), {ask} for the matching request sentence, {page} for the page you were on (whole-site requests only), {date} for the date and time, and {reason} for the reason shown on the block page. A line with {reason} or {page} is left out when it has no value.</p>
     </section>
     <div class="actions">
       <button class="btn" type="submit">Save</button>
@@ -71,12 +71,19 @@
     </label>
     <p class="hint">Every 30 minutes, the sites you requested in the last 30 days are opened in the background. When one opens, you get a notification and it is marked Approved.</p>
   </div>
+  <div class="approval remind">
+    <label class="switch-row" for="remind">
+      <span>Offer a reminder after 2 days</span>
+      <input type="checkbox" id="remind" class="switch">
+    </label>
+    <p class="hint">If a request is still not open 2 days after you sent it, you get a notification. Click it to send a short follow-up email. Each request is reminded once at most.</p>
+  </div>
   <div class="updates">
     <div class="row">
       <h2>Updates</h2>
       <span class="cur">Version <span id="version2"></span></span>
     </div>
-    <p class="hint">New versions are checked for automatically every few hours.</p>
+    <p class="hint">New versions are checked for automatically every 2 hours, when Chrome starts and when you open the extension.</p>
     <div class="actions">
       <button class="btn light small" type="button" id="checkUpdate">Check for updates</button>
       <button class="btn small" type="button" id="getUpdate" hidden>Download update</button>

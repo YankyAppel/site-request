@@ -124,6 +124,11 @@ export function entryKey(h) {
   return h.id || ((h.at || 0) + '|' + (h.url || ''));
 }
 
+// One check per distinct target: a page address, or a blocked-parts request by its own key.
+export function checkKey(h) {
+  return h && h.kind === 'parts' ? 'parts:' + entryKey(h) : (h && h.url) || '';
+}
+
 // The address to check for an entry: the page itself, then its site's front page.
 export function probeTargets(url) {
   try {

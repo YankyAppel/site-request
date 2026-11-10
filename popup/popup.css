@@ -117,3 +117,29 @@ button.link.small:disabled { color: #73788F; cursor: default; text-decoration: n
 .history li.open { cursor: pointer; }
 .history li.open:hover .d { color: #006aff; }
 .checked { margin: 2px 18px 6px 55px; font-size: 11px; color: #73788F; line-height: 1.35; }
+
+/* Whole site / Just this page */
+.scope { display: flex; margin: 8px 0 0; border: 1px solid #d0d2e0; border-radius: 5px; overflow: hidden; }
+.scope label { flex: 1; position: relative; cursor: pointer; }
+.scope input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.scope span { display: block; text-align: center; padding: 5px 4px; font-size: 12px; color: #3b3e4f; }
+.scope label + label span { border-left: 1px solid #d0d2e0; }
+.scope input:checked + span { background: #006aff; color: #fff; font-weight: 700; }
+.scope input:focus-visible + span { outline: 2px solid #9cc3ff; outline-offset: -2px; }
+.scope-note { overflow-wrap: anywhere; }
+
+/* Hidden blocks */
+.parts { margin: 0 18px 12px; padding: 9px 10px 10px; border: 1px solid #f3d38f; background: #fff8e8; border-radius: 5px; }
+.parts-head { margin: 0; font-size: 13px; font-weight: 700; color: #1d1e26; display: flex; align-items: center; }
+.parts .pdot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #f29900; margin-right: 7px; }
+.parts .note { margin: 4px 0 6px; line-height: 1.35; }
+.parts-list { list-style: none; margin: 0 0 8px; padding: 0; max-height: 340px; overflow-y: auto; scrollbar-width: thin; }
+.parts-list li { margin: 0; }
+.parts-list label { display: flex; align-items: flex-start; gap: 6px; padding: 3px 0; font-size: 12px; cursor: pointer; }
+.parts-list input { width: auto; padding: 0; margin: 1px 0 0; flex: none; accent-color: #006aff; }
+.parts-list .h { display: block; color: #1d1e26; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.parts-list .k { display: block; color: #73788F; font-size: 11px; }
+.parts-list .txt { min-width: 0; flex: 1; }
+.parts-list .ad { flex: none; font-size: 10px; font-weight: 700; padding: 0 4px; border-radius: 7px; background: #eceef4; color: #73788F; line-height: 14px; margin-top: 1px; }
+.parts .btn:disabled { opacity: 0.5; cursor: default; }
+.history li .tag.busy { background: #eaf2ff; color: #0a5fe0; animation: pulse 1s ease-in-out infinite; }

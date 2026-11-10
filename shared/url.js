@@ -142,7 +142,7 @@ export function formatDate(d) {
 }
 
 export function fillTemplate(tpl, vars) {
-  return String(tpl || '').replace(/\{(url|domain|date|reason)\}/gi, (_, k) => vars[k.toLowerCase()] || '');
+  return String(tpl || '').replace(/\{(url|domain|date|reason|target|ask|page)\}/gi, (_, k) => vars[k.toLowerCase()] || '');
 }
 
 // Cleans the reason text read from a block page; '' when there is none.
@@ -183,7 +183,39 @@ export const DEFAULTS = {
   notes: '',
   subject: 'Site request: {domain}',
   checkApproved: true,
-  body: 'Hello,\n\nPlease open the following site for my account:\n\n{url}\n\nSite: {domain}\nRequested: {date}\nReason: {reason}\n\nThank you very much.'
+  remind: true,
+  body: 'Hello,\n\n{ask}\n\n{target}\n\nSite: {domain}\nPage: {page}\nRequested: {date}\nReason: {reason}\n\nThank you very much.'
+};
+
+// The message every version up to 1.2.0 used by default. A saved copy of it is read as the new default.
+export const OLD_DEFAULT_BODY = 'Hello,\n\nPlease open the following site for my account:\n\n{url}\n\nSite: {domain}\nRequested: {date}\nReason: {reason}\n\nThank you very much.';
+
+export function bodyTemplate(s) {
+  const b = String((s && s.body) || '');
+  return !b.trim() || b === OLD_DEFAULT_BODY ? DEFAULTS.body : b;
+}
+
+// Same registrable-domain rule as the approval check: "www.news.example.co.uk" -> "example.co.uk".
+const TWO_PART_TLDS = /\.(co|com|org|net|gov|ac|edu|ltd|plc|me)\.[a-z]{2}$/i;
+export function baseDomain(host) {
+  host = String(host || '').toLowerCase().replace(/\.$/, '');
+  if (!host || /^[\d.]+$/.test(host) || host.includes(':')) return host;
+  const parts = host.split('.');
+  return parts.slice(-(TWO_PART_TLDS.test(host) ? 3 : 2)).join('.');
+}
+
+// What a request asks for: 'site' = the whole domain as a wildcard, 'page' = the exact address.
+export function scopeTarget(url, scope) {
+  if (scope === 'page') return url;
+  let host = '';
+  try { host = new URL(url).hostname.toLowerCase(); } catch (e) { return url; }
+  if (/^[\d.]+$/.test(host) || host.includes(':')) return host;
+  return '*.' + baseDomain(host);
+}
+
+export const ASK = {
+  site: 'Please open this whole site for my account, including all of its pages:',
+  page: 'Please open just this one page for my account (not the whole site):'
 };
 
 export function isEmail(s) {
@@ -201,25 +233,71 @@ export function detailsBlock(s) {
   return '\n\n--\nAccount details:\n' + lines.join('\n') + (notes ? (lines.length ? '\n' : '') + notes : '');
 }
 
-// Fills the message. A line holding {reason} is left out when no reason was found;
-// when the template has no {reason}, a found reason is added as its own line.
-function fillBody(tpl, vars) {
+// Fills the message. A line holding {reason} (or {page}) is left out when it has no value;
+// when the template has no {reason}, a found reason is added as its own line. A message
+// of your own without {ask} or {target} gets one line saying what is asked for.
+function fillBody(tpl, vars, scope) {
   let t = String(tpl || '');
-  if (/\{reason\}/i.test(t)) {
-    if (!vars.reason) t = t.split('\n').filter(l => !/\{reason\}/i.test(l)).join('\n');
-    return fillTemplate(t, vars);
+  for (const k of ['reason', 'page']) {
+    const re = new RegExp('\\{' + k + '\\}', 'i');
+    if (!vars[k] && re.test(t)) t = t.split('\n').filter(l => !re.test(l)).join('\n');
   }
-  const body = fillTemplate(t, vars);
-  return vars.reason ? body + '\n\nReason: ' + vars.reason : body;
+  let body = fillTemplate(t, vars);
+  if (!/\{reason\}/i.test(t) && vars.reason) body += '\n\nReason: ' + vars.reason;
+  if (!/\{(ask|target)\}/i.test(t)) {
+    body += scope === 'page'
+      ? '\n\nPlease open just this page, not the whole site.'
+      : '\n\nPlease open the whole site (' + vars.target + ').';
+  }
+  return body;
 }
 
-export function buildEmail(s, url, now, reason) {
-  const vars = { url, domain: domainOf(url), date: formatDate(now || new Date()), reason: cleanReason(reason) };
+export function buildEmail(s, url, now, reason, scope) {
+  scope = scope === 'page' ? 'page' : 'site';
+  const vars = {
+    url, domain: domainOf(url), date: formatDate(now || new Date()), reason: cleanReason(reason),
+    target: scopeTarget(url, scope), ask: ASK[scope], page: scope === 'site' ? url : ''
+  };
   return {
     to: String(s.to || '').trim(),
     subject: fillTemplate(s.subject || DEFAULTS.subject, vars),
-    body: fillBody(s.body || DEFAULTS.body, vars) + detailsBlock(s),
+    body: fillBody(bodyTemplate(s), vars, scope) + detailsBlock(s),
     domain: vars.domain,
-    reason: vars.reason
+    reason: vars.reason,
+    scope,
+    target: vars.target
+  };
+}
+
+// One email for the blocked parts of a page: every address on its own line.
+export function buildPartsEmail(s, pageUrl, items, now) {
+  const domain = domainOf(pageUrl);
+  const list = items.map(i => String(i).trim()).filter(Boolean);
+  const n = list.length;
+  return {
+    to: String(s.to || '').trim(),
+    subject: 'Site request: ' + n + (n === 1 ? ' address' : ' addresses') + ' used by ' + domain,
+    body: 'Hello,\n\nThe site ' + domain + ' opens, but parts of it do not load because ' +
+      (n === 1 ? 'this address is' : 'these addresses are') + ' blocked. Please open ' + (n === 1 ? 'it' : 'them') + ' for my account:\n\n' +
+      list.join('\n') + '\n\nPage: ' + pageUrl + '\nRequested: ' + formatDate(now || new Date()) + '\n\nThank you very much.' + detailsBlock(s),
+    domain
+  };
+}
+
+// The short follow-up for a request that is still not open.
+export function buildReminderEmail(s, entry, now) {
+  let subject = entry.subject;
+  let target = entry.target;
+  if (!subject || !target) {
+    const orig = buildEmail(s, entry.url, new Date(entry.at || Date.now()), '', entry.scope);
+    subject = subject || orig.subject;
+    target = target || orig.target;
+  }
+  const what = entry.kind === 'parts' && Array.isArray(entry.items) ? entry.items.join('\n') : target;
+  return {
+    to: String(entry.to || s.to || '').trim(),
+    subject: 'Reminder: ' + subject,
+    body: 'Hello,\n\nThis is a short reminder about my request from ' + formatDate(new Date(entry.at || now)) +
+      '. It is still blocked:\n\n' + what + '\n\nCould you please take a look?\n\nThank you very much.' + detailsBlock(s)
   };
 }

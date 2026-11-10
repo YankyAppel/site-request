@@ -1,4 +1,4 @@
-import { DEFAULTS, isEmail } from '../shared/url.js';
+import { DEFAULTS, isEmail, bodyTemplate } from '../shared/url.js';
 import { compareVersions } from '../shared/update.js';
 
 const $ = id => document.getElementById(id);
@@ -7,8 +7,14 @@ const FIELDS = ['to', 'name', 'phone', 'pin', 'notes', 'account', 'subject', 'bo
 async function load() {
   const s = await chrome.storage.local.get(DEFAULTS);
   for (const f of FIELDS) $(f).value = s[f];
+  $('body').value = bodyTemplate(s);
   $('checkApproved').checked = !!s.checkApproved;
+  $('remind').checked = !!s.remind;
 }
+
+$('remind').addEventListener('change', async () => {
+  await chrome.storage.local.set({ remind: $('remind').checked });
+});
 
 $('checkApproved').addEventListener('change', async () => {
   await chrome.storage.local.set({ checkApproved: $('checkApproved').checked });
@@ -16,6 +22,7 @@ $('checkApproved').addEventListener('change', async () => {
 
 function statusLabel(h) {
   if (h.status === 'approved') return 'Approved';
+  if (h.remindedAt) return 'Reminded';
   if (h.status === 'blocked') return 'Still blocked';
   return '';
 }
@@ -36,7 +43,8 @@ async function renderHistory() {
     const a = document.createElement('a');
     a.href = h.url;
     a.target = '_blank';
-    a.textContent = h.url;
+    a.textContent = h.kind === 'parts' ? (h.domain || '') + ': ' + (h.items || []).join(', ')
+      : h.scope === 'site' && h.target ? h.target + ' (' + h.url + ')' : h.url;
     const t = document.createElement('span');
     t.textContent = new Date(h.at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
     const label = statusLabel(h);
@@ -120,7 +128,8 @@ $('checkUpdate').addEventListener('click', async () => {
   const r = await chrome.runtime.sendMessage({ type: 'check_update' });
   $('checkUpdate').disabled = false;
   if (!r || r.state === 'error') {
-    $('updateMsg').textContent = 'Couldn\u2019t check for updates right now. Try again later.';
+    $('updateMsg').className = 'upd err';
+    $('updateMsg').textContent = failText(r && r.errors, Date.now());
   } else if (r.state === 'newer') {
     const { update } = await chrome.storage.local.get({ update: null });
     showUpdate(update);
@@ -137,7 +146,22 @@ $('getUpdate').addEventListener('click', async () => {
 
 $('reloadExt').addEventListener('click', () => chrome.runtime.reload());
 
-chrome.storage.local.get({ update: null }).then(({ update }) => showUpdate(update));
+function failText(errors, at) {
+  const where = ['github.com', 'api.github.com'].filter(k => errors && k in errors);
+  const hosts = where.length ? where.join(' and ') : 'github.com';
+  return 'Couldn\u2019t check for updates (' + new Date(at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) +
+    '): ' + hosts + ' did not answer. Your network may block ' + (where.length > 1 ? 'them' : 'it') + '.';
+}
+
+chrome.storage.local.get({ update: null, lastCheck: null }).then(({ update, lastCheck }) => {
+  showUpdate(update);
+  // The automatic checks fail silently; the last failure is shown here.
+  const newer = update && update.latest && compareVersions(update.latest, VERSION) > 0;
+  if (!newer && lastCheck && lastCheck.state === 'error') {
+    $('updateMsg').className = 'upd err';
+    $('updateMsg').textContent = failText(lastCheck.errors, lastCheck.at);
+  }
+});
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.history) renderHistory();

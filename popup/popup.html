@@ -27,6 +27,11 @@
   <section class="request divider">
     <p class="label" id="mode">This page</p>
     <input id="url" type="text" spellcheck="false" autocomplete="off" placeholder="https://example.com">
+    <div class="scope" id="scopeRow" role="radiogroup" aria-label="What to request" hidden>
+      <label><input type="radio" name="scope" value="site" checked><span>Whole site</span></label>
+      <label><input type="radio" name="scope" value="page"><span>Just this page</span></label>
+    </div>
+    <p class="note scope-note" id="scopeNote" hidden></p>
     <p class="note" id="reason" hidden></p>
     <p class="note" id="note" hidden></p>
   </section>
@@ -36,6 +41,12 @@
     <button class="link" id="openMail" hidden>Open the email instead</button>
     <button class="link" id="openSettings" hidden>Open Settings</button>
   </div>
+  <section class="parts" id="parts" hidden>
+    <p class="parts-head"><span class="pdot"></span><span id="partsTitle"></span></p>
+    <p class="note">They come from other addresses, so the page may look broken. Request them in one email.</p>
+    <ul class="parts-list" id="partsList"></ul>
+    <button class="btn tiny" id="requestParts" type="button">Request all</button>
+  </section>
   <div class="divider-line"></div>
   <div class="item static head-row" id="historyHead"><span>Recent requests</span><button class="link small" id="checkNow" type="button" hidden>Check now</button></div>
   <ul class="history" id="history"></ul>

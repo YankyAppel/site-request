@@ -17,3 +17,11 @@ Your settings stay.
 Approved requests: every 30 minutes the extension checks the sites you requested.
 When one is approved, Chrome shows a notification "Site approved". You can turn
 this off in Settings ("Check if my requests were approved").
+
+Blocked parts: when a site opens but parts of it are blocked, the icon shows how
+many in amber. Open the popup and click "Request all" to ask for them in one email.
+
+Right-click any link or page: "Request this site" or "Request just this page".
+
+Reminder: if a request is still not open after 2 days, a notification offers to
+send a short follow-up email. You can turn this off in Settings.

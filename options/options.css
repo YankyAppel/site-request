@@ -59,3 +59,4 @@ input.switch:checked { background: #006aff; }
 input.switch:checked::after { left: 18px; }
 .history li .st { margin-left: auto; }
 .history li .st.ok { color: #13703f; font-weight: 700; }
+.upd.err { color: #a42323; }
