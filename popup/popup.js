@@ -1,6 +1,7 @@
 import { compareVersions } from '../shared/update.js';
 import { checkKey } from '../shared/approval.js';
 import { isBlockPage, extractBlockedUrl, cleanCandidate, cleanReason, domainOf, DEFAULTS, isEmail, scopeTarget } from '../shared/url.js';
+import { normalizeReasons, defaultReasonId, reasonSummary, cleanDetails, DETAILS_MAX } from '../shared/reasons.js';
 
 const $ = id => document.getElementById(id);
 let currentJobId = null;
@@ -40,6 +41,7 @@ function renderJob(job) {
     showStatus('sent', 'Request sent \u2713', false);
     setBusy(false);
     loadHistory();
+    if (new URLSearchParams(location.search).has('window')) setTimeout(() => window.close(), 2500);
   } else {
     showStatus('error', errorText(job.error), true);
     setBusy(false);
@@ -105,7 +107,19 @@ async function loadHistory() {
     d.textContent = h.kind === 'parts'
       ? (h.domain || '') + ' \u00b7 ' + (h.items || []).length + ((h.items || []).length === 1 ? ' part' : ' parts')
       : (h.domain || h.url) + (h.scope === 'page' ? ' \u00b7 page' : '');
-    li.append(d);
+    const why = reasonSummary(h.reason);
+    if (why) {
+      const dw = document.createElement('span');
+      dw.className = 'dw';
+      const r = document.createElement('span');
+      r.className = 'r';
+      r.textContent = why;
+      dw.append(d, r);
+      li.append(dw);
+      li.title += (h.reason.text ? '\nReason: ' + h.reason.text : '') + (h.reason.details ? '\nDetails: ' + h.reason.details : '');
+    } else {
+      li.append(d);
+    }
     if (h.status !== 'approved' && busy.has(checkKey(h))) {
       li.append(tag('Checking\u2026', 'busy'));
     } else if (h.status === 'approved') {
@@ -143,6 +157,7 @@ let blockReason = '';
 let blockedUrl = '';
 let pageMode = 'none';
 let activeTab = null;
+let prefilled = null;
 
 async function detect() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -173,8 +188,25 @@ async function detect() {
   return { url, mode };
 }
 
+// "Request with reason…" from the right-click menu leaves the site here for the popup.
+async function takePrefill() {
+  const { prefill } = await chrome.storage.session.get({ prefill: null });
+  if (!prefill) return null;
+  await chrome.storage.session.remove('prefill');
+  return Date.now() - (prefill.at || 0) < 2 * 60 * 1000 && prefill.url ? prefill : null;
+}
+
 async function init() {
-  const { url, mode } = await detect();
+  const pre = await takePrefill();
+  let url, mode;
+  if (pre) {
+    url = pre.url;
+    mode = pre.fromBlockPage ? 'blocked' : 'page';
+    blockReason = cleanReason(pre.reason);
+    prefilled = pre;
+  } else {
+    ({ url, mode } = await detect());
+  }
   const label = $('mode');
   if (mode === 'blocked') {
     label.textContent = url ? 'Blocked page detected' : 'Blocked page \u2014 enter the site address';
@@ -196,8 +228,10 @@ async function init() {
   }
   if (url) noteIfRequestedBefore(url);
   else $('url').focus();
+  if (pre && pre.scope === 'page') document.querySelector('input[name="scope"][value="page"]').checked = true;
   renderScope();
-  if (mode === 'page') loadParts();
+  if (mode === 'page' && !pre) loadParts();
+  await loadReasons();
 
   loadHistory();
 
@@ -260,7 +294,7 @@ $('request').addEventListener('click', async () => {
   const sameAsBlocked = url === cleanCandidate(blockedUrl);
   const reason = blockReason && sameAsBlocked ? blockReason : '';
   const fromBlockPage = sameAsBlocked && /^(blocked|guess)$/.test(pageMode);
-  const r = await chrome.runtime.sendMessage({ type: 'request', url, reason, fromBlockPage, scope: currentScope() });
+  const r = await chrome.runtime.sendMessage({ type: 'request', url, reason, fromBlockPage, scope: currentScope(), mine: myReason() });
   if (!r || !r.ok) {
     setBusy(false);
     showStatus('error', errorText(r && r.error), false);
@@ -295,6 +329,58 @@ function renderScope() {
 }
 
 for (const r of document.querySelectorAll('input[name="scope"]')) r.addEventListener('change', renderScope);
+
+// ---- Reason: one template (or none) plus optional details ----
+let reasonList = [];
+let chosenReasonId = '';
+
+function myReason() {
+  return { id: chosenReasonId, details: cleanDetails($('details').value) };
+}
+
+function renderChips() {
+  const box = $('chips');
+  box.textContent = '';
+  const all = [{ id: '', label: 'None' }].concat(reasonList);
+  for (const r of all) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (r.id === chosenReasonId ? ' on' : '');
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', r.id === chosenReasonId ? 'true' : 'false');
+    b.dataset.id = r.id;
+    b.textContent = r.label;
+    if (r.text) b.title = r.text;
+    b.addEventListener('click', () => { chosenReasonId = r.id; renderChips(); });
+    box.append(b);
+  }
+}
+
+async function loadReasons() {
+  const st = await chrome.storage.local.get({ reasons: null, defaultReason: DEFAULTS.defaultReason });
+  reasonList = normalizeReasons(st.reasons);
+  chosenReasonId = defaultReasonId(reasonList, st.defaultReason);
+  renderChips();
+}
+
+function renderCount() {
+  const box = $('details');
+  box.style.height = 'auto';
+  box.style.height = Math.min(120, box.scrollHeight + 2) + 'px';
+  const n = box.value.length;
+  const c = $('detailsCount');
+  c.hidden = n < DETAILS_MAX - 100;
+  c.className = 'count' + (n >= DETAILS_MAX ? ' near' : '');
+  c.textContent = n + ' / ' + DETAILS_MAX;
+}
+$('details').addEventListener('input', renderCount);
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes.reasons) return;
+  reasonList = normalizeReasons(changes.reasons.newValue);
+  if (!reasonList.some(r => r.id === chosenReasonId)) chosenReasonId = '';
+  renderChips();
+});
 
 // ---- Hidden blocks on this page ----
 let partGroups = [];
@@ -372,7 +458,8 @@ $('requestParts').addEventListener('click', async () => {
   const r = await chrome.runtime.sendMessage({
     type: 'request_parts', pageUrl: activeTab.url,
     items: chosen.map(g => g.label),
-    samples: chosen.flatMap(g => g.hosts)
+    samples: chosen.flatMap(g => g.hosts),
+    mine: myReason()
   });
   $('requestParts').disabled = false;
   if (!r || !r.ok) {

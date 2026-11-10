@@ -56,7 +56,7 @@
     <section>
       <label for="body">Message</label>
       <textarea id="body" rows="11"></textarea>
-      <p class="hint">You can use {url} for the full address, {domain} for the site name, {target} for what you ask for (the whole site as *.example.com, or just the page), {ask} for the matching request sentence, {page} for the page you were on (whole-site requests only), {date} for the date and time, and {reason} for the reason shown on the block page. A line with {reason} or {page} is left out when it has no value.</p>
+      <p class="hint">You can use {url} for the full address, {domain} for the site name, {target} for what you ask for (the whole site as *.example.com, or just the page), {ask} for the matching request sentence, {page} for the page you were on (whole-site requests only), {date} for the date and time, {reason} for the reason shown on the block page, and {why} for the reason you pick and your details. A line with {reason}, {page} or {why} is left out when it has no value.</p>
     </section>
     <div class="actions">
       <button class="btn" type="submit">Save</button>
@@ -64,6 +64,32 @@
       <span class="saved" id="saved" hidden>Saved ✓</span>
     </div>
   </form>
+  <div class="reasons-box" id="reasonsBox">
+    <h2>Reasons</h2>
+    <p class="hint">Pick one with one tap when you send a request. Its text goes in the email as "Reason: …".</p>
+    <ul class="reasons" id="reasonList"></ul>
+    <div class="add-reason">
+      <div class="two">
+        <section>
+          <label for="newLabel">Button name</label>
+          <input id="newLabel" type="text" maxlength="40" placeholder="For work">
+        </section>
+        <section>
+          <label for="newText">Text in the email</label>
+          <input id="newText" type="text" maxlength="300" placeholder="I need this site for my work.">
+        </section>
+      </div>
+      <div class="actions">
+        <button class="btn light small" type="button" id="addReason">Add reason</button>
+        <span class="rmsg" id="reasonMsg"></span>
+      </div>
+    </div>
+    <section>
+      <label for="defaultReason">Default reason</label>
+      <select id="defaultReason"></select>
+      <p class="hint">Used by the right-click menu and picked first in the popup. To choose another one from the right-click menu, use "Request with reason…".</p>
+    </section>
+  </div>
   <div class="approval">
     <label class="switch-row" for="checkApproved">
       <span>Check if my requests were approved</span>

@@ -150,3 +150,22 @@ button.link.small:disabled { color: #73788F; cursor: default; text-decoration: n
 .to-setup .to-row input { flex: 1; min-width: 0; padding: 5px 7px; font-size: 12px; }
 .to-setup .note { margin: 6px 0 0; line-height: 1.35; }
 .to-setup .note.bad { color: #a42323; }
+
+/* Reason chips + details */
+.why { margin: 10px 0 0; }
+.why .label { margin-bottom: 5px; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip {
+  font-family: Lato, sans-serif; font-size: 12px; line-height: 16px; color: #3b3e4f;
+  background: #fff; border: 1px solid #d0d2e0; border-radius: 12px; padding: 3px 9px; cursor: pointer;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chip:hover { border-color: #9cc3ff; }
+.chip.on { background: #006aff; border-color: #006aff; color: #fff; font-weight: 700; }
+.chip:focus-visible { outline: 2px solid #9cc3ff; outline-offset: 1px; }
+#details { display: block; margin-top: 7px; padding: 6px 8px; font-size: 12px; line-height: 16px; resize: none; min-height: 30px; max-height: 120px; overflow-y: auto; scrollbar-width: thin; }
+.count { margin: 2px 0 0; font-size: 11px; color: #73788F; text-align: right; }
+.count.near { color: #a42323; }
+.history li .dw { flex: 1; min-width: 0; }
+.history li .dw .d { display: block; }
+.history li .r { display: block; font-size: 11px; color: #73788F; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

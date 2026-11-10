@@ -7,6 +7,7 @@ import {
   classify, applyCheck, isDue, probeTargets, notificationId, urlFromNotificationId, entryKey, checkKey
 } from './shared/approval.js';
 import { blockSignal, needsBodyCheck, bodySignal, newRecord, addSignal, summary, hostOf } from './shared/parts.js';
+import { normalizeReasons, chosenReason, defaultReasonId } from './shared/reasons.js';
 import { dueReminders, reminderId, keyFromReminderId, waitingLabel, REMIND_EVERY_MIN } from './shared/reminder.js';
 
 const JOB_TIMEOUT_MIN = 1.5;
@@ -14,6 +15,15 @@ const HISTORY_MAX = 25;
 
 async function getSettings() {
   return chrome.storage.local.get(DEFAULTS);
+}
+
+// The reason a request carries. mine = { id, details } from the popup; 'default' = the default reason.
+async function getChoice(mine) {
+  const st = await chrome.storage.local.get({ reasons: null, defaultReason: DEFAULTS.defaultReason });
+  const list = normalizeReasons(st.reasons);
+  if (mine === 'default') return chosenReason(list, defaultReasonId(list, st.defaultReason), '');
+  if (!mine || typeof mine !== 'object') return null;
+  return chosenReason(list, String(mine.id || ''), mine.details);
 }
 
 async function getJobs() {
@@ -39,6 +49,7 @@ async function addHistory(job) {
     fromBlockPage: !!job.fromBlockPage, status: 'pending',
     kind: job.kind, scope: job.scope, subject: job.subject, target: job.target
   };
+  if (job.reason) entry.reason = job.reason;
   if (job.kind === 'parts') {
     entry.items = job.items;
     entry.samples = job.samples;
@@ -78,34 +89,36 @@ function serial(p) {
   return p;
 }
 
-function startRequest(rawUrl, reason, fromBlockPage, scope, via) {
-  return serial(doStartRequest(rawUrl, reason, fromBlockPage, scope, via));
+function startRequest(rawUrl, reason, fromBlockPage, scope, via, mine) {
+  return serial(doStartRequest(rawUrl, reason, fromBlockPage, scope, via, mine));
 }
 
-async function doStartRequest(rawUrl, reason, fromBlockPage, scope, via) {
+async function doStartRequest(rawUrl, reason, fromBlockPage, scope, via, mine) {
   const url = cleanCandidate(rawUrl);
   if (!url) return { ok: false, error: 'bad_url' };
   const s = await getSettings();
   if (!isEmail(s.to)) return { ok: false, error: 'no_address' };
-  const mail = buildEmail(s, url, new Date(), reason, scope);
+  const choice = await getChoice(mine);
+  const mail = buildEmail(s, url, new Date(), reason, scope, choice);
   return sendMail(s, mail, {
     kind: 'site', url, domain: mail.domain, fromBlockPage: !!fromBlockPage,
-    scope: mail.scope, target: mail.target, via: via || 'popup'
+    scope: mail.scope, target: mail.target, via: via || 'popup', reason: choice
   });
 }
 
 // One email for the chosen blocked parts of a page.
-function startPartsRequest(pageUrl, items, samples) {
+function startPartsRequest(pageUrl, items, samples, mine) {
   return serial((async () => {
     const page = cleanCandidate(pageUrl);
     const list = (items || []).map(String).filter(Boolean);
     if (!page || !list.length) return { ok: false, error: 'bad_url' };
     const s = await getSettings();
     if (!isEmail(s.to)) return { ok: false, error: 'no_address' };
-    const mail = buildPartsEmail(s, page, list, new Date());
+    const choice = await getChoice(mine);
+    const mail = buildPartsEmail(s, page, list, new Date(), choice);
     return sendMail(s, mail, {
       kind: 'parts', url: page, domain: mail.domain, fromBlockPage: false, items: list,
-      samples: (samples || []).map(String).filter(Boolean).slice(0, 40), via: 'popup'
+      samples: (samples || []).map(String).filter(Boolean).slice(0, 40), via: 'popup', reason: choice
     });
   })());
 }
@@ -162,9 +175,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   (async () => {
     switch (msg && msg.type) {
       case 'request':
-        return startRequest(msg.url, msg.reason, msg.fromBlockPage, msg.scope, 'popup');
+        return startRequest(msg.url, msg.reason, msg.fromBlockPage, msg.scope, 'popup', msg.mine);
       case 'request_parts':
-        return startPartsRequest(msg.pageUrl, msg.items, msg.samples);
+        return startPartsRequest(msg.pageUrl, msg.items, msg.samples, msg.mine);
       case 'hidden_blocks':
         return hiddenBlocks(msg.tabId);
       case 'check_reminders':
@@ -238,12 +251,19 @@ chrome.alarms.onAlarm.addListener(async alarm => {
 chrome.runtime.onInstalled.addListener(async details => {
   if (details.reason === 'install') chrome.runtime.openOptionsPage();
   setupMenus();
+  ensureReasons().catch(() => {});
   ensureReminderAlarm();
   ensureUpdateAlarm();
   checkForUpdate();
   await ensureApprovalAlarm();
   checkApprovalSoon(1);
 });
+
+// The starter reasons are stored once (on install or on the update to 1.4.0); after that the list is yours.
+async function ensureReasons() {
+  const { reasons } = await chrome.storage.local.get({ reasons: null });
+  if (!Array.isArray(reasons)) await chrome.storage.local.set({ reasons: normalizeReasons(null) });
+}
 
 chrome.runtime.onStartup.addListener(async () => {
   ensureReminderAlarm();
@@ -650,16 +670,35 @@ async function doReminderCheck() {
 // ---- Right-click menu ----
 const MENU_SITE = 'sr-site';
 const MENU_PAGE = 'sr-page';
+const MENU_WHY = 'sr-why';
 
 function setupMenus() {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({ id: MENU_SITE, title: 'Request this site', contexts: ['page', 'link'] });
     chrome.contextMenus.create({ id: MENU_PAGE, title: 'Request just this page', contexts: ['page', 'link'] });
+    chrome.contextMenus.create({ id: MENU_WHY, title: 'Request with reason\u2026', contexts: ['page', 'link'] });
   });
 }
 
+// Opens the popup with the site filled in, so a reason can be picked. If Chrome will not open
+// the toolbar popup from here, the same page opens in a small window.
+async function openReasonPopup(prefill, tab) {
+  await chrome.storage.session.set({ prefill: Object.assign({ at: Date.now() }, prefill) });
+  try {
+    if (!chrome.action.openPopup) throw new Error('no openPopup');
+    await chrome.action.openPopup(tab && tab.windowId != null ? { windowId: tab.windowId } : undefined);
+    return { ok: true, opened: 'popup' };
+  } catch (e) {
+    const w = await chrome.windows.create({
+      url: chrome.runtime.getURL('popup/popup.html?window=1'), type: 'popup', width: 300, height: 640, focused: true
+    });
+    return { ok: true, opened: 'window', windowId: w && w.id };
+  }
+}
+
 async function onMenuClick(info, tab) {
-  const scope = info.menuItemId === MENU_PAGE ? 'page' : info.menuItemId === MENU_SITE ? 'site' : '';
+  const why = info.menuItemId === MENU_WHY;
+  const scope = info.menuItemId === MENU_PAGE ? 'page' : info.menuItemId === MENU_SITE || why ? 'site' : '';
   if (!scope) return null;
   let raw = info.linkUrl || info.pageUrl || (tab && tab.url) || '';
   let fromBlockPage = false;
@@ -682,7 +721,15 @@ async function onMenuClick(info, tab) {
     }
     raw = found;
   }
-  const r = await startRequest(raw, reason, fromBlockPage, scope, 'menu');
+  if (why) {
+    const url = cleanCandidate(raw);
+    if (!url) {
+      notifyError(JOB_ERRORS.bad_url).catch(() => {});
+      return { ok: false, error: 'bad_url' };
+    }
+    return openReasonPopup({ url, reason, fromBlockPage, scope: 'site' }, tab);
+  }
+  const r = await startRequest(raw, reason, fromBlockPage, scope, 'menu', 'default');
   if (!r.ok) {
     notifyError(JOB_ERRORS[r.error] || 'The request could not be sent.').catch(() => {});
   }

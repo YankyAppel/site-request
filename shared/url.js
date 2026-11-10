@@ -1,4 +1,5 @@
 // URL helpers shared by the popup, the background worker and the tests.
+import { reasonBlock } from './reasons.js';
 
 const BLOCK_HOST = /^filter[\w-]*\.techloq\.[a-z.]+$/i;
 
@@ -142,7 +143,7 @@ export function formatDate(d) {
 }
 
 export function fillTemplate(tpl, vars) {
-  return String(tpl || '').replace(/\{(url|domain|date|reason|target|ask|page)\}/gi, (_, k) => vars[k.toLowerCase()] || '');
+  return String(tpl || '').replace(/\{(url|domain|date|reason|target|ask|page|why)\}/gi, (_, k) => vars[k.toLowerCase()] || '');
 }
 
 // Cleans the reason text read from a block page; '' when there is none.
@@ -184,15 +185,19 @@ export const DEFAULTS = {
   subject: 'Site request: {domain}',
   checkApproved: true,
   remind: true,
-  body: 'Hello,\n\n{ask}\n\n{target}\n\nSite: {domain}\nPage: {page}\nRequested: {date}\nReason: {reason}\n\nThank you very much.'
+  defaultReason: '',
+  body: 'Hello,\n\n{ask}\n\n{target}\n\n{why}\n\nSite: {domain}\nPage: {page}\nRequested: {date}\nBlocked as: {reason}\n\nThank you very much.'
 };
+
+// The default message of 1.3.0 and 1.3.1. A saved copy of it is read as the new default too.
+export const BODY_13 = 'Hello,\n\n{ask}\n\n{target}\n\nSite: {domain}\nPage: {page}\nRequested: {date}\nReason: {reason}\n\nThank you very much.';
 
 // The message every version up to 1.2.0 used by default. A saved copy of it is read as the new default.
 export const OLD_DEFAULT_BODY = 'Hello,\n\nPlease open the following site for my account:\n\n{url}\n\nSite: {domain}\nRequested: {date}\nReason: {reason}\n\nThank you very much.';
 
 export function bodyTemplate(s) {
   const b = String((s && s.body) || '');
-  return !b.trim() || b === OLD_DEFAULT_BODY ? DEFAULTS.body : b;
+  return !b.trim() || b === OLD_DEFAULT_BODY || b === BODY_13 ? DEFAULTS.body : b;
 }
 
 // Same registrable-domain rule as the approval check: "www.news.example.co.uk" -> "example.co.uk".
@@ -233,30 +238,33 @@ export function detailsBlock(s) {
   return '\n\n--\nAccount details:\n' + lines.join('\n') + (notes ? (lines.length ? '\n' : '') + notes : '');
 }
 
-// Fills the message. A line holding {reason} (or {page}) is left out when it has no value;
-// when the template has no {reason}, a found reason is added as its own line. A message
-// of your own without {ask} or {target} gets one line saying what is asked for.
+// Fills the message. A line holding {reason}, {page} or {why} is left out when it has no value;
+// when the template has no {reason}, a found block reason is added as its own line, and when it has
+// no {why}, your reason is added at the end. A message of your own without {ask} or {target} gets
+// one line saying what is asked for.
 function fillBody(tpl, vars, scope) {
   let t = String(tpl || '');
-  for (const k of ['reason', 'page']) {
+  for (const k of ['reason', 'page', 'why']) {
     const re = new RegExp('\\{' + k + '\\}', 'i');
     if (!vars[k] && re.test(t)) t = t.split('\n').filter(l => !re.test(l)).join('\n');
   }
   let body = fillTemplate(t, vars);
-  if (!/\{reason\}/i.test(t) && vars.reason) body += '\n\nReason: ' + vars.reason;
+  if (!/\{reason\}/i.test(t) && vars.reason) body += '\n\nBlocked as: ' + vars.reason;
   if (!/\{(ask|target)\}/i.test(t)) {
     body += scope === 'page'
       ? '\n\nPlease open just this page, not the whole site.'
       : '\n\nPlease open the whole site (' + vars.target + ').';
   }
-  return body;
+  if (!/\{why\}/i.test(t) && vars.why) body += '\n\n' + vars.why;
+  return body.replace(/\n{3,}/g, '\n\n');
 }
 
-export function buildEmail(s, url, now, reason, scope) {
+// mine = the reason you chose: { label, text, details } or null.
+export function buildEmail(s, url, now, reason, scope, mine) {
   scope = scope === 'page' ? 'page' : 'site';
   const vars = {
     url, domain: domainOf(url), date: formatDate(now || new Date()), reason: cleanReason(reason),
-    target: scopeTarget(url, scope), ask: ASK[scope], page: scope === 'site' ? url : ''
+    target: scopeTarget(url, scope), ask: ASK[scope], page: scope === 'site' ? url : '', why: reasonBlock(mine)
   };
   return {
     to: String(s.to || '').trim(),
@@ -270,8 +278,9 @@ export function buildEmail(s, url, now, reason, scope) {
 }
 
 // One email for the blocked parts of a page: every address on its own line.
-export function buildPartsEmail(s, pageUrl, items, now) {
+export function buildPartsEmail(s, pageUrl, items, now, mine) {
   const domain = domainOf(pageUrl);
+  const why = reasonBlock(mine);
   const list = items.map(i => String(i).trim()).filter(Boolean);
   const n = list.length;
   return {
@@ -279,7 +288,7 @@ export function buildPartsEmail(s, pageUrl, items, now) {
     subject: 'Site request: ' + n + (n === 1 ? ' address' : ' addresses') + ' used by ' + domain,
     body: 'Hello,\n\nThe site ' + domain + ' opens, but parts of it do not load because ' +
       (n === 1 ? 'this address is' : 'these addresses are') + ' blocked. Please open ' + (n === 1 ? 'it' : 'them') + ' for my account:\n\n' +
-      list.join('\n') + '\n\nPage: ' + pageUrl + '\nRequested: ' + formatDate(now || new Date()) + '\n\nThank you very much.' + detailsBlock(s),
+      list.join('\n') + (why ? '\n\n' + why : '') + '\n\nPage: ' + pageUrl + '\nRequested: ' + formatDate(now || new Date()) + '\n\nThank you very much.' + detailsBlock(s),
     domain
   };
 }
@@ -294,10 +303,11 @@ export function buildReminderEmail(s, entry, now) {
     target = target || orig.target;
   }
   const what = entry.kind === 'parts' && Array.isArray(entry.items) ? entry.items.join('\n') : target;
+  const why = reasonBlock(entry.reason);
   return {
     to: String(entry.to || s.to || '').trim(),
     subject: 'Reminder: ' + subject,
     body: 'Hello,\n\nThis is a short reminder about my request from ' + formatDate(new Date(entry.at || now)) +
-      '. It is still blocked:\n\n' + what + '\n\nCould you please take a look?\n\nThank you very much.' + detailsBlock(s)
+      '. It is still blocked:\n\n' + what + (why ? '\n\n' + why : '') + '\n\nCould you please take a look?\n\nThank you very much.' + detailsBlock(s)
   };
 }

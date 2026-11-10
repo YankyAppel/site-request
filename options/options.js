@@ -1,5 +1,6 @@
 import { DEFAULTS, isEmail, bodyTemplate } from '../shared/url.js';
 import { compareVersions } from '../shared/update.js';
+import { normalizeReasons, addReason, updateReason, deleteReason, moveReason, defaultReasonId, reasonSummary, LABEL_MAX, TEXT_MAX } from '../shared/reasons.js';
 
 const $ = id => document.getElementById(id);
 const FIELDS = ['to', 'name', 'phone', 'pin', 'notes', 'account', 'subject', 'body'];
@@ -47,19 +48,174 @@ async function renderHistory() {
       : h.scope === 'site' && h.target ? h.target + ' (' + h.url + ')' : h.url;
     const t = document.createElement('span');
     t.textContent = new Date(h.at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+    li.append(a);
+    const why = reasonSummary(h.reason);
+    if (why) {
+      const rs = document.createElement('span');
+      rs.className = 'rs';
+      rs.textContent = why;
+      rs.title = reasonTitle(h.reason);
+      li.append(rs);
+    }
     const label = statusLabel(h);
     if (label) {
       const st = document.createElement('span');
       st.className = 'st' + (h.status === 'approved' ? ' ok' : '');
       st.textContent = label;
       if (h.checkedAt) st.title = 'Checked ' + new Date(h.checkedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
-      li.append(a, st, t);
-    } else {
-      li.append(a, t);
+      li.append(st);
     }
+    li.append(t);
     ul.appendChild(li);
   }
 }
+
+function reasonTitle(r) {
+  if (!r) return '';
+  return [r.text ? 'Reason: ' + r.text : '', r.details ? 'Details: ' + r.details : ''].filter(Boolean).join('\n');
+}
+
+// ---- Reasons ----
+let reasons = [];
+let editing = '';
+
+function reasonError(code) {
+  return {
+    no_label: 'Please give the reason a button name.',
+    same_label: 'There is already a reason with that name.',
+    too_many: 'That is the most reasons you can have. Delete one first.',
+    not_found: 'That reason was already deleted.'
+  }[code] || 'Something went wrong.';
+}
+
+function reasonMsg(text, cls) {
+  $('reasonMsg').className = 'rmsg' + (cls ? ' ' + cls : '');
+  $('reasonMsg').textContent = text || '';
+}
+
+async function loadReasons() {
+  const st = await chrome.storage.local.get({ reasons: null, defaultReason: DEFAULTS.defaultReason });
+  reasons = normalizeReasons(st.reasons);
+  // The starters are written once, so they can be changed like any other reason.
+  if (!Array.isArray(st.reasons)) await chrome.storage.local.set({ reasons });
+  renderReasons(st.defaultReason);
+}
+
+async function saveReasons(list, msg) {
+  reasons = list;
+  const { defaultReason } = await chrome.storage.local.get({ defaultReason: DEFAULTS.defaultReason });
+  const d = defaultReasonId(list, defaultReason);
+  await chrome.storage.local.set({ reasons: list, defaultReason: d });
+  renderReasons(d);
+  reasonMsg(msg, 'ok');
+}
+
+function btn(text, title, fn, disabled) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn light small';
+  b.textContent = text;
+  if (title) b.title = title;
+  b.disabled = !!disabled;
+  b.addEventListener('click', fn);
+  return b;
+}
+
+function renderReasons(def) {
+  const ul = $('reasonList');
+  ul.textContent = '';
+  if (!reasons.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'No reasons yet. Add one below.';
+    ul.append(li);
+  }
+  reasons.forEach((r, i) => {
+    const li = document.createElement('li');
+    li.dataset.id = r.id;
+    if (editing === r.id) {
+      li.className = 'editing';
+      const l = document.createElement('input');
+      l.type = 'text'; l.maxLength = LABEL_MAX; l.value = r.label; l.className = 'edit-label'; l.setAttribute('aria-label', 'Button name');
+      const x = document.createElement('input');
+      x.type = 'text'; x.maxLength = TEXT_MAX; x.value = r.text; x.className = 'edit-text'; x.setAttribute('aria-label', 'Text in the email');
+      const rb = document.createElement('span');
+      rb.className = 'rb';
+      const save = async () => {
+        const res = updateReason(reasons, r.id, l.value, x.value);
+        if (!res.ok) return reasonMsg(reasonError(res.error), 'bad');
+        editing = '';
+        await saveReasons(res.list, 'Saved \u2713');
+      };
+      rb.append(btn('Save', '', save), btn('Cancel', '', () => { editing = ''; renderReasons($('defaultReason').value); reasonMsg(''); }));
+      for (const inp of [l, x]) inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+      li.append(l, x, rb);
+      ul.append(li);
+      setTimeout(() => l.focus(), 0);
+      return;
+    }
+    const rt = document.createElement('span');
+    rt.className = 'rt';
+    const rl = document.createElement('span');
+    rl.className = 'rl';
+    rl.textContent = r.label;
+    const rx = document.createElement('span');
+    rx.className = 'rx';
+    rx.textContent = r.text;
+    rx.title = r.text;
+    rt.append(rl, rx);
+    const rb = document.createElement('span');
+    rb.className = 'rb';
+    rb.append(
+      btn('\u2191', 'Move up', async () => saveReasons(moveReason(reasons, r.id, -1).list, ''), i === 0),
+      btn('\u2193', 'Move down', async () => saveReasons(moveReason(reasons, r.id, 1).list, ''), i === reasons.length - 1),
+      btn('Edit', '', () => { editing = r.id; renderReasons($('defaultReason').value); reasonMsg(''); }),
+      btn('Delete', '', async () => {
+        const res = deleteReason(reasons, r.id);
+        if (res.ok) await saveReasons(res.list, 'Deleted "' + r.label + '"');
+      })
+    );
+    rb.querySelector('button').classList.add('up');
+    rb.children[1].classList.add('down');
+    rb.children[2].classList.add('edit');
+    rb.children[3].classList.add('del');
+    li.append(rt, rb);
+    ul.append(li);
+  });
+  const sel = $('defaultReason');
+  sel.textContent = '';
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'None';
+  sel.append(none);
+  for (const r of reasons) {
+    const o = document.createElement('option');
+    o.value = r.id;
+    o.textContent = r.label;
+    sel.append(o);
+  }
+  sel.value = defaultReasonId(reasons, def);
+}
+
+$('addReason').addEventListener('click', async () => {
+  const res = addReason(reasons, $('newLabel').value, $('newText').value);
+  if (!res.ok) {
+    reasonMsg(reasonError(res.error), 'bad');
+    $('newLabel').focus();
+    return;
+  }
+  $('newLabel').value = '';
+  $('newText').value = '';
+  await saveReasons(res.list, 'Added "' + res.item.label + '"');
+});
+for (const id of ['newLabel', 'newText']) {
+  $(id).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('addReason').click(); } });
+}
+
+$('defaultReason').addEventListener('change', async () => {
+  await chrome.storage.local.set({ defaultReason: $('defaultReason').value });
+  reasonMsg('Default reason saved \u2713', 'ok');
+});
 
 $('form').addEventListener('submit', async e => {
   e.preventDefault();
@@ -168,4 +324,5 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 load();
+loadReasons();
 renderHistory();

@@ -32,9 +32,19 @@ Before you send, the popup asks **Whole site** (the default) or **Just this page
 - **Whole site** asks for the whole domain as a wildcard, for example `*.example.com`, with the page you were on as an example.
 - **Just this page** asks for that exact address only, and the email says so.
 
+## Reasons
+
+Say why you need a site, in one tap. Under the address, the popup shows your reasons as buttons, plus **None**. Tap one (only one at a time). There is also a box, **Add details (optional)**, for your own explanation, up to 500 characters. Use a reason, details, both, or neither.
+
+In the email, the reason's text appears as a **Reason:** line and your details as a **Details:** paragraph. Both are left out when empty. The same choice works for **Request all**, and a reminder repeats the reason of the original request. Recent requests show the reason under each site.
+
+Make your own reasons in Settings under **Reasons**: add, edit, delete and move them up or down. Each one has a short button name and the text that goes in the email. Four starters come with the extension (For work, For a shiur / learning, For school, For shopping / a purchase). Change or delete them as you like. A reason you change later does not change requests you already sent.
+
 ## Right-click
 
-Right-click a link, or anywhere on a page, and choose **Request this site** (the whole domain) or **Request just this page** (the exact address). Right-clicking a link to a block page requests the blocked site. A notification tells you when the email was sent.
+Right-click a link, or anywhere on a page, and choose **Request this site** (the whole domain) or **Request just this page** (the exact address). Right-clicking a link to a block page requests the blocked site. These send right away with your **Default reason** (Settings; None unless you pick one). A notification tells you when the email was sent.
+
+To pick a reason first, choose **Request with reason…**. The popup opens with the site filled in. If Chrome does not open the popup there, the same page opens in a small window, which closes after sending.
 
 ## Hidden blocks
 
@@ -69,7 +79,10 @@ All optional and stored only in your browser:
 - **Gmail account**: only if you are signed in to more than one Google account (0 = first, 1 = second, or the address itself).
 - **Check if my requests were approved**: the background check above.
 - **Offer a reminder after 2 days**: the reminder above.
-- **Subject and message**: your own wording. Placeholders: `{url}` full address, `{domain}` site name, `{target}` what is asked for (`*.example.com` for the whole site, or the exact page), `{ask}` the matching request sentence, `{page}` the page you were on (whole-site requests only), `{date}` date and time, `{reason}` the reason from the block page. A line with `{reason}` or `{page}` is left out when it has no value.
+- **Reasons**: your reason buttons, and the **Default reason** used by the right-click menu and picked first in the popup.
+- **Subject and message**: your own wording. Placeholders: `{url}` full address, `{domain}` site name, `{target}` what is asked for (`*.example.com` for the whole site, or the exact page), `{ask}` the matching request sentence, `{page}` the page you were on (whole-site requests only), `{date}` date and time, `{reason}` the reason shown on the block page, `{why}` the reason you pick and your details. A line with `{reason}`, `{page}` or `{why}` is left out when it has no value. A message of your own without `{why}` gets your reason added at the end.
+
+The reason shown on the block page (for example its category) appears in the default message as **Blocked as:**, so it does not mix with your own **Reason:** line.
 
 The extension only acts on Gmail tabs it opened itself for a request.
 
