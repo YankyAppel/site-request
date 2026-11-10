@@ -13,3 +13,7 @@ Updates: when a new version is out, the icon shows NEW. Open it, click Update,
 unzip the download, copy everything from its site-request folder into your
 site-request folder (replace the files), then click "Reload after update".
 Your settings stay.
+
+Approved requests: every 30 minutes the extension checks the sites you requested.
+When one is approved, Chrome shows a notification "Site approved". You can turn
+this off in Settings ("Check if my requests were approved").

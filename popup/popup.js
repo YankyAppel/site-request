@@ -58,6 +58,31 @@ function timeAgo(ts) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function tag(text, cls) {
+  const s = document.createElement('span');
+  s.className = 'tag' + (cls ? ' ' + cls : '');
+  s.textContent = text;
+  return s;
+}
+
+function statusTitle(h) {
+  if (h.status === 'approved') return '\nApproved' + (h.approvedAt ? ' \u00b7 ' + timeAgo(h.approvedAt) : '') + '. Click to open.';
+  if (!h.checkedAt) return '';
+  const word = h.openCount ? 'Looks open, checking again' : h.status === 'blocked' ? 'Still blocked' : 'No answer';
+  return '\n' + word + ' \u00b7 checked ' + timeAgo(h.checkedAt);
+}
+
+function checkedText(r) {
+  if (!r) return '';
+  if (!r.checked) return 'Nothing to check right now.';
+  const parts = [];
+  if (r.approved) parts.push(r.approved + ' approved');
+  if (r.confirming) parts.push(r.confirming + (r.confirming === 1 ? ' looks' : ' look') + ' open (checking again in 2 minutes)');
+  if (r.blocked) parts.push(r.blocked + ' still blocked');
+  if (r.unknown) parts.push(r.unknown + ' no answer');
+  return 'Checked ' + timeAgo(r.at || Date.now()) + ': ' + parts.join(', ') + '.';
+}
+
 async function loadHistory() {
   const { history } = await chrome.storage.local.get({ history: [] });
   const ul = $('history');
@@ -70,14 +95,22 @@ async function loadHistory() {
   }
   for (const h of history.slice(0, 5)) {
     const li = document.createElement('li');
-    li.title = h.url;
+    li.title = h.url + statusTitle(h);
     const d = document.createElement('span');
     d.className = 'd';
     d.textContent = h.domain || h.url;
+    li.append(d);
+    if (h.status === 'approved') {
+      li.append(tag('Approved', 'ok'));
+      li.classList.add('open');
+      li.addEventListener('click', () => chrome.tabs.create({ url: h.url, active: true }));
+    } else if (h.status === 'blocked' && !h.openCount) {
+      li.append(tag('Blocked', ''));
+    }
     const t = document.createElement('span');
     t.className = 't';
     t.textContent = timeAgo(h.at);
-    li.append(d, t);
+    li.append(t);
     ul.appendChild(li);
   }
   return history;
@@ -98,6 +131,7 @@ async function noteIfRequestedBefore(url) {
 
 let blockReason = '';
 let blockedUrl = '';
+let pageMode = 'none';
 
 async function detect() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -143,6 +177,7 @@ async function init() {
   }
   $('url').value = url;
   blockedUrl = url;
+  pageMode = mode;
   if (blockReason) {
     $('reason').hidden = false;
     $('reason').textContent = 'Why: ' + blockReason;
@@ -176,8 +211,10 @@ $('request').addEventListener('click', async () => {
   setBusy(true);
   showStatus('sending', 'Sending your request\u2026', false);
   // The reason belongs to the blocked address; it is not sent for an address typed in by hand.
-  const reason = blockReason && url === cleanCandidate(blockedUrl) ? blockReason : '';
-  const r = await chrome.runtime.sendMessage({ type: 'request', url, reason });
+  const sameAsBlocked = url === cleanCandidate(blockedUrl);
+  const reason = blockReason && sameAsBlocked ? blockReason : '';
+  const fromBlockPage = sameAsBlocked && /^(blocked|guess)$/.test(pageMode);
+  const r = await chrome.runtime.sendMessage({ type: 'request', url, reason, fromBlockPage });
   if (!r || !r.ok) {
     setBusy(false);
     showStatus('error', errorText(r && r.error), false);
@@ -206,6 +243,30 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (!currentJobId || job.id === currentJobId) renderJob(job);
   }
 });
+
+// ---- Was it approved? ----
+async function showCheckNow() {
+  const { checkApproved, history } = await chrome.storage.local.get({ checkApproved: DEFAULTS.checkApproved, history: [] });
+  $('checkNow').hidden = !checkApproved || !history.some(h => h.status !== 'approved');
+}
+
+$('checkNow').addEventListener('click', async () => {
+  const btn = $('checkNow');
+  btn.disabled = true;
+  btn.textContent = 'Checking\u2026';
+  $('checked').hidden = true;
+  const r = await chrome.runtime.sendMessage({ type: 'check_now' });
+  btn.disabled = false;
+  btn.textContent = 'Check now';
+  $('checked').hidden = false;
+  $('checked').textContent = r && r.ok ? checkedText(r) : 'Couldn\u2019t check right now. Try again later.';
+  showCheckNow();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && (changes.history || changes.checkApproved)) showCheckNow();
+});
+showCheckNow();
 
 // ---- Update bar ----
 function renderUpdate(update) {

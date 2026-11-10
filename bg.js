@@ -1,5 +1,9 @@
 import { DEFAULTS, isBlockPage, composeUrl, isEmail, cleanCandidate, buildEmail } from './shared/url.js';
 import { checkLatest, compareVersions } from './shared/update.js';
+import {
+  CHECK_EVERY_MIN, CHECK_TIMEOUT_MS, CONFIRM_DELAY_MIN, BODY_LIMIT,
+  classify, applyCheck, isDue, probeTargets, notificationId, urlFromNotificationId
+} from './shared/approval.js';
 
 const JOB_TIMEOUT_MIN = 1.5;
 const HISTORY_MAX = 25;
@@ -26,7 +30,10 @@ async function findJobByTab(tabId) {
 
 async function addHistory(job) {
   const { history } = await chrome.storage.local.get({ history: [] });
-  history.unshift({ url: job.url, domain: job.domain, to: job.to, at: Date.now() });
+  history.unshift({
+    id: job.id, url: job.url, domain: job.domain, to: job.to, at: Date.now(),
+    fromBlockPage: !!job.fromBlockPage, status: 'pending'
+  });
   await chrome.storage.local.set({ history: history.slice(0, HISTORY_MAX) });
 }
 
@@ -45,13 +52,13 @@ async function finish(job, state, error) {
 // Compose tabs being opened right now; Gmail may ask about a tab before its job is stored.
 let opening = Promise.resolve();
 
-function startRequest(rawUrl, reason) {
-  const p = doStartRequest(rawUrl, reason);
+function startRequest(rawUrl, reason, fromBlockPage) {
+  const p = doStartRequest(rawUrl, reason, fromBlockPage);
   opening = p.catch(() => {});
   return p;
 }
 
-async function doStartRequest(rawUrl, reason) {
+async function doStartRequest(rawUrl, reason, fromBlockPage) {
   const url = cleanCandidate(rawUrl);
   if (!url) return { ok: false, error: 'bad_url' };
   const s = await getSettings();
@@ -61,7 +68,7 @@ async function doStartRequest(rawUrl, reason) {
   const tab = await chrome.tabs.create({ url: link, active: false });
   const job = {
     id: crypto.randomUUID(), tabId: tab.id, url, domain: mail.domain, to: mail.to,
-    composeUrl: link, state: 'sending', error: '', started: Date.now()
+    composeUrl: link, state: 'sending', error: '', started: Date.now(), fromBlockPage: !!fromBlockPage
   };
   await putJob(job);
   try {
@@ -90,7 +97,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   (async () => {
     switch (msg && msg.type) {
       case 'request':
-        return startRequest(msg.url, msg.reason);
+        return startRequest(msg.url, msg.reason, msg.fromBlockPage);
+      case 'check_now':
+        return runApprovalCheck({ force: true });
       case 'check_update':
         return checkForUpdate();
       case 'download_update':
@@ -142,6 +151,7 @@ chrome.tabs.onRemoved.addListener(async tabId => {
 
 chrome.alarms.onAlarm.addListener(async alarm => {
   if (alarm.name === UPDATE_ALARM) return checkForUpdate();
+  if (alarm.name === APPROVAL_ALARM || alarm.name === APPROVAL_SOON) return runApprovalCheck({ force: false });
   if (!alarm.name.startsWith('job:')) return;
   const jobs = await getJobs();
   const job = jobs[alarm.name.slice(4)];
@@ -152,11 +162,15 @@ chrome.runtime.onInstalled.addListener(async details => {
   if (details.reason === 'install') chrome.runtime.openOptionsPage();
   ensureUpdateAlarm();
   checkForUpdate();
+  await ensureApprovalAlarm();
+  checkApprovalSoon(1);
 });
 
-chrome.runtime.onStartup.addListener(() => {
+chrome.runtime.onStartup.addListener(async () => {
   ensureUpdateAlarm();
   checkForUpdate();
+  await ensureApprovalAlarm();
+  checkApprovalSoon(1);
 });
 
 // ---- Updates from GitHub releases ----
@@ -235,6 +249,174 @@ async function downloadUpdate() {
   }
 }
 
+// ---- Was my request approved? ----
+// Every 30 minutes (and once after the browser starts) each recent request that is not
+// approved yet is opened in the background, without cookies. When the site itself answers
+// twice in a row, at least a minute apart, it counts as approved and a notification is shown.
+
+const APPROVAL_ALARM = 'approval-check';
+const APPROVAL_SOON = 'approval-soon';
+const PARALLEL = 4;
+
+async function ensureApprovalAlarm() {
+  const { checkApproved } = await chrome.storage.local.get({ checkApproved: DEFAULTS.checkApproved });
+  if (!checkApproved) {
+    await chrome.alarms.clear(APPROVAL_ALARM);
+    await chrome.alarms.clear(APPROVAL_SOON);
+    return;
+  }
+  const a = await chrome.alarms.get(APPROVAL_ALARM);
+  if (!a) chrome.alarms.create(APPROVAL_ALARM, { delayInMinutes: CHECK_EVERY_MIN, periodInMinutes: CHECK_EVERY_MIN });
+}
+
+function checkApprovalSoon(minutes) {
+  chrome.alarms.create(APPROVAL_SOON, { delayInMinutes: minutes });
+}
+
+async function readBody(res) {
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let out = '';
+  try {
+    while (out.length < BODY_LIMIT) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      out += dec.decode(value, { stream: true });
+    }
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+  return out;
+}
+
+async function probe(url) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), CHECK_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: 'GET', credentials: 'omit', cache: 'no-store', redirect: 'follow', signal: ctl.signal
+    });
+    const headers = {};
+    res.headers.forEach((v, k) => { headers[k] = v; });
+    const body = await readBody(res);
+    return { url, finalUrl: res.url || url, status: res.status, redirected: res.redirected, headers, body };
+  } catch (e) {
+    return { url, error: ctl.signal.aborted ? 'timeout' : String(e && e.message || e) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// One address -> { result, why }. The site's front page is tried only when the page
+// itself moved to another site (a sign-in page, for example).
+async function checkUrl(url) {
+  const targets = probeTargets(url);
+  let c = { result: 'unknown', why: 'bad address' };
+  for (let i = 0; i < targets.length; i++) {
+    c = classify(Object.assign(await probe(targets[i]), { url: targets[i] }));
+    if (!(c.result === 'unknown' && /^other site/.test(c.why))) break;
+  }
+  return c;
+}
+
+async function mapLimit(items, n, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker));
+  return out;
+}
+
+function hostLabel(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return url; }
+}
+
+async function notifyApproved(entry) {
+  const id = notificationId(entry.url);
+  await chrome.notifications.create(id, {
+    type: 'basic',
+    iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+    title: 'Site approved: ' + hostLabel(entry.url),
+    message: 'Your request was approved. Click here to open the site.',
+    priority: 2
+  });
+}
+
+let approvalRun = null;
+
+function runApprovalCheck(opts) {
+  if (!approvalRun) {
+    approvalRun = doApprovalCheck(opts || {}).finally(() => { approvalRun = null; });
+  }
+  return approvalRun;
+}
+
+async function doApprovalCheck({ force }) {
+  const { checkApproved } = await chrome.storage.local.get({ checkApproved: DEFAULTS.checkApproved });
+  if (!checkApproved && !force) return { ok: true, skipped: 'off' };
+  const started = Date.now();
+  const { history: before } = await chrome.storage.local.get({ history: [] });
+  const urls = [...new Set(before.filter(h => isDue(h, started)).map(h => h.url))];
+  const checks = await mapLimit(urls, PARALLEL, checkUrl);
+  const byUrl = new Map(urls.map((u, i) => [u, checks[i]]));
+
+  // Read again: a request may have been added while the checks ran.
+  const now = Date.now();
+  const { history } = await chrome.storage.local.get({ history: [] });
+  const approved = [];
+  let confirmSoon = false;
+  const seen = new Set();
+  const updated = history.map(h => {
+    const c = byUrl.get(h.url);
+    if (!c || !isDue(h, now)) return h;
+    const r = applyCheck(h, c, now);
+    if (r.confirmSoon) confirmSoon = true;
+    if (r.approvedNow && !seen.has(h.url)) {
+      seen.add(h.url);
+      // Only announce sites that were really blocked (old entries were all sent from the block page).
+      if (h.fromBlockPage !== false || r.entry.seenBlocked) {
+        r.entry.notifiedAt = now;
+        approved.push(r.entry);
+      }
+    }
+    return r.entry;
+  });
+  const counts = { checked: urls.length, approved: 0, blocked: 0, unknown: 0, confirming: 0 };
+  for (const u of urls) {
+    const e = updated.find(h => h.url === u);
+    if (!e) continue;
+    if (e.status === 'approved') counts.approved++;
+    else if (e.lastResult === 'unknown') counts.unknown++;
+    else if (e.openCount) counts.confirming++;
+    else counts.blocked++;
+  }
+  await chrome.storage.local.set({ history: updated, approvalCheck: { at: now, counts } });
+  for (const e of approved) {
+    try { await notifyApproved(e); } catch (err) { /* notifications turned off in Windows/Chrome */ }
+  }
+  if (confirmSoon) checkApprovalSoon(CONFIRM_DELAY_MIN);
+  return Object.assign({ ok: true, at: now }, counts);
+}
+
+chrome.notifications.onClicked.addListener(async id => {
+  const url = urlFromNotificationId(id);
+  if (!url) return;
+  chrome.notifications.clear(id);
+  const tab = await chrome.tabs.create({ url, active: true });
+  if (tab && tab.windowId != null) chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && 'checkApproved' in changes) ensureApprovalAlarm();
+});
+
 // A service worker that wakes up after the browser was left open for days still checks.
+ensureApprovalAlarm();
 ensureUpdateAlarm();
 chrome.storage.local.get({ update: null }).then(({ update }) => showBadge(update)).catch(() => {});

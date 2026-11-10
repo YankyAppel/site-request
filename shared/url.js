@@ -182,6 +182,7 @@ export const DEFAULTS = {
   pin: '',
   notes: '',
   subject: 'Site request: {domain}',
+  checkApproved: true,
   body: 'Hello,\n\nPlease open the following site for my account:\n\n{url}\n\nSite: {domain}\nRequested: {date}\nReason: {reason}\n\nThank you very much.'
 };
 

@@ -7,6 +7,17 @@ const FIELDS = ['to', 'name', 'phone', 'pin', 'notes', 'account', 'subject', 'bo
 async function load() {
   const s = await chrome.storage.local.get(DEFAULTS);
   for (const f of FIELDS) $(f).value = s[f];
+  $('checkApproved').checked = !!s.checkApproved;
+}
+
+$('checkApproved').addEventListener('change', async () => {
+  await chrome.storage.local.set({ checkApproved: $('checkApproved').checked });
+});
+
+function statusLabel(h) {
+  if (h.status === 'approved') return 'Approved';
+  if (h.status === 'blocked') return 'Still blocked';
+  return '';
 }
 
 async function renderHistory() {
@@ -28,7 +39,16 @@ async function renderHistory() {
     a.textContent = h.url;
     const t = document.createElement('span');
     t.textContent = new Date(h.at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
-    li.append(a, t);
+    const label = statusLabel(h);
+    if (label) {
+      const st = document.createElement('span');
+      st.className = 'st' + (h.status === 'approved' ? ' ok' : '');
+      st.textContent = label;
+      if (h.checkedAt) st.title = 'Checked ' + new Date(h.checkedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+      li.append(a, st, t);
+    } else {
+      li.append(a, t);
+    }
     ul.appendChild(li);
   }
 }
@@ -118,6 +138,10 @@ $('getUpdate').addEventListener('click', async () => {
 $('reloadExt').addEventListener('click', () => chrome.runtime.reload());
 
 chrome.storage.local.get({ update: null }).then(({ update }) => showUpdate(update));
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.history) renderHistory();
+});
 
 load();
 renderHistory();

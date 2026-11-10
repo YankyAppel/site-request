@@ -37,8 +37,9 @@
     <button class="link" id="openSettings" hidden>Open Settings</button>
   </div>
   <div class="divider-line"></div>
-  <p class="item static" id="historyHead">Recent requests</p>
+  <div class="item static head-row" id="historyHead"><span>Recent requests</span><button class="link small" id="checkNow" type="button" hidden>Check now</button></div>
   <ul class="history" id="history"></ul>
+  <p class="checked" id="checked" hidden></p>
   <p class="item divider-top" id="settings">Settings</p>
 </main>
 <script type="module" src="popup.js"></script>
