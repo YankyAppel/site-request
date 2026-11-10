@@ -1,0 +1,7 @@
+*.pem
+*.key
+*.crx
+*.zip
+.ext_key*
+.DS_Store
+Thumbs.db

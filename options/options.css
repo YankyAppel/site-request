@@ -1,0 +1,43 @@
+body { background: #F1F2F7; padding: 32px 16px; }
+.card {
+  max-width: 520px;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid #d0d2e0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+header .sub { color: #73788F; font-size: 14px; margin-left: auto; }
+form { padding: 8px 24px 20px; }
+section { margin-top: 16px; }
+label { display: block; font-size: 14px; margin-bottom: 6px; }
+label .opt { color: #73788F; font-size: 12px; }
+textarea { resize: vertical; line-height: 1.4; }
+.hint { margin: 5px 0 0; font-size: 12px; color: #73788F; line-height: 1.4; }
+.actions { margin-top: 20px; display: flex; gap: 10px; align-items: center; }
+.saved { color: #13703f; font-size: 14px; }
+.history { border-top: 1px solid #DCDEE4; padding: 16px 24px 20px; }
+.history .row { display: flex; align-items: center; justify-content: space-between; }
+.history h2 { font-size: 14px; margin: 0; font-weight: 700; }
+.btn.small { padding: 6px 12px; font-size: 13px; }
+.history ul { list-style: none; margin: 10px 0 0; padding: 0; font-size: 13px; }
+.history li { padding: 6px 0; border-bottom: 1px solid #F1F2F7; display: flex; gap: 12px; justify-content: space-between; }
+.history li a { color: #1d1e26; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history li a:hover { color: #006aff; }
+.history li span { color: #73788F; flex: none; }
+.history li.empty { color: #73788F; display: block; }
+
+h2.group { font-size: 14px; font-weight: 700; margin: 26px 0 0; padding-top: 18px; border-top: 1px solid #DCDEE4; }
+h2.group + .hint { margin-top: 4px; }
+.two { display: flex; gap: 12px; }
+.two section { flex: 1; }
+.secret { display: flex; gap: 8px; }
+.secret input { flex: 1; }
+
+.updates { border-top: 1px solid #DCDEE4; padding: 16px 24px 18px; }
+.updates .row { display: flex; align-items: center; justify-content: space-between; }
+.updates h2 { font-size: 14px; margin: 0; font-weight: 700; }
+.updates .cur { color: #73788F; font-size: 13px; }
+.updates .actions { margin-top: 10px; flex-wrap: wrap; }
+.upd { font-size: 13px; color: #73788F; }
+.upd.new { color: #1d1e26; font-weight: 700; }

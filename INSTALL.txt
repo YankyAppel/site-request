@@ -1,0 +1,15 @@
+Site Request - how to install
+
+1. Unzip this file. You get a folder called "site-request".
+   Put it somewhere it can stay (for example Documents), not in Downloads.
+2. In Chrome, open chrome://extensions and turn on "Developer mode" (top right).
+3. Click "Load unpacked" and choose the "site-request" folder.
+4. The Settings page opens. Check the email address, add your account details, and click Save.
+   Pin the extension (puzzle icon > pin) so the button is always one click away.
+
+Make sure you are signed in to Gmail in this Chrome. Each request is sent from that Gmail.
+
+Updates: when a new version is out, the icon shows NEW. Open it, click Update,
+unzip the download, copy everything from its site-request folder into your
+site-request folder (replace the files), then click "Reload after update".
+Your settings stay.

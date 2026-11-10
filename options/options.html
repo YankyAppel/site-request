@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="../shared/base.css" rel="stylesheet" type="text/css">
+  <link href="options.css" rel="stylesheet" type="text/css">
+  <title>Site Request — Settings</title>
+</head>
+<body>
+<div class="card">
+  <header>
+    <img class="mark" src="../images/logo-mark.svg" alt="">
+    <span class="word">Site Request</span>
+    <span class="sub">Settings · <span id="version"></span></span>
+  </header>
+  <form id="form">
+    <section>
+      <label for="to">Send requests to</label>
+      <input id="to" type="email" placeholder="requests@example.com">
+      <p class="hint">The email address of the company that approves your site requests. Change it if yours is different.</p>
+    </section>
+    <h2 class="group">Account details <span class="opt">(optional)</span></h2>
+    <p class="hint">Filled-in details are added at the bottom of every request, so the request can be matched to your account. Empty ones are left out.</p>
+    <div class="two">
+      <section>
+        <label for="name">Full name</label>
+        <input id="name" type="text" autocomplete="name">
+      </section>
+      <section>
+        <label for="phone">Phone number</label>
+        <input id="phone" type="tel" autocomplete="tel">
+      </section>
+    </div>
+    <section>
+      <label for="pin">Account PIN</label>
+      <div class="secret">
+        <input id="pin" type="password" autocomplete="off">
+        <button class="btn light small" type="button" id="showPin">Show</button>
+      </div>
+    </section>
+    <section>
+      <label for="notes">Other details / notes</label>
+      <textarea id="notes" rows="2"></textarea>
+    </section>
+    <h2 class="group">Email</h2>
+    <section>
+      <label for="account">Gmail account <span class="opt">(optional)</span></label>
+      <input id="account" type="text" placeholder="0">
+      <p class="hint">Only if you are signed in to more than one Google account: 0 is the first account, 1 the second, and so on. You can also type the Gmail address itself.</p>
+    </section>
+    <section>
+      <label for="subject">Subject</label>
+      <input id="subject" type="text">
+    </section>
+    <section>
+      <label for="body">Message</label>
+      <textarea id="body" rows="11"></textarea>
+      <p class="hint">You can use {url} for the full address, {domain} for the site name, {date} for the date and time, and {reason} for the reason shown on the block page (a line with {reason} is left out when there is none).</p>
+    </section>
+    <div class="actions">
+      <button class="btn" type="submit">Save</button>
+      <button class="btn light" type="button" id="reset">Restore defaults</button>
+      <span class="saved" id="saved" hidden>Saved ✓</span>
+    </div>
+  </form>
+  <div class="updates">
+    <div class="row">
+      <h2>Updates</h2>
+      <span class="cur">Version <span id="version2"></span></span>
+    </div>
+    <p class="hint">New versions are checked for automatically every few hours.</p>
+    <div class="actions">
+      <button class="btn light small" type="button" id="checkUpdate">Check for updates</button>
+      <button class="btn small" type="button" id="getUpdate" hidden>Download update</button>
+      <button class="btn light small" type="button" id="reloadExt" hidden>Reload after update</button>
+      <span class="upd" id="updateMsg"></span>
+    </div>
+    <p class="hint" id="updateSteps" hidden>Unzip the downloaded file and copy everything from its site-request folder into your site-request folder (replace the files). Then click Reload after update. Your settings stay.</p>
+  </div>
+  <div class="history">
+    <div class="row">
+      <h2>Sent requests</h2>
+      <button class="btn light small" type="button" id="clear">Clear list</button>
+    </div>
+    <ul id="history"></ul>
+  </div>
+</div>
+<script type="module" src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="../shared/base.css" rel="stylesheet" type="text/css">
+  <link href="popup.css" rel="stylesheet" type="text/css">
+  <title>Site Request</title>
+</head>
+<body>
+<header>
+  <img class="mark" src="../images/logo-mark.svg" alt="">
+  <span class="word">Site Request</span>
+</header>
+<div class="update" id="update" hidden>
+  <div class="row">
+    <span id="updateText">New version available</span>
+    <button class="btn tiny" id="updateBtn" type="button">Update</button>
+  </div>
+  <div class="steps" id="updateSteps" hidden>
+    <p>1. Unzip the downloaded file and copy everything from its <b>site-request</b> folder into your <b>site-request</b> folder (replace the files).</p>
+    <p>2. Then click <b>Reload after update</b>. Your settings stay.</p>
+    <button class="btn tiny light" id="reloadBtn" type="button">Reload after update</button>
+  </div>
+</div>
+<main>
+  <section class="request divider">
+    <p class="label" id="mode">This page</p>
+    <input id="url" type="text" spellcheck="false" autocomplete="off" placeholder="https://example.com">
+    <p class="note" id="reason" hidden></p>
+    <p class="note" id="note" hidden></p>
+  </section>
+  <p class="item primary" id="request">Request this site</p>
+  <div class="status" id="status" hidden>
+    <span class="dot" id="statusIcon"></span><span id="statusText"></span>
+    <button class="link" id="openMail" hidden>Open the email instead</button>
+    <button class="link" id="openSettings" hidden>Open Settings</button>
+  </div>
+  <div class="divider-line"></div>
+  <p class="item static" id="historyHead">Recent requests</p>
+  <ul class="history" id="history"></ul>
+  <p class="item divider-top" id="settings">Settings</p>
+</main>
+<script type="module" src="popup.js"></script>
+</body>
+</html>
