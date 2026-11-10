@@ -1,5 +1,6 @@
 import {
-  DEFAULTS, isBlockPage, composeUrl, isEmail, cleanCandidate, buildEmail, buildPartsEmail, buildReminderEmail, extractBlockedUrl
+  DEFAULTS, isBlockPage, composeUrl, isEmail, cleanCandidate, buildEmail, buildPartsEmail, buildReminderEmail, extractBlockedUrl,
+  cleanReason, scopeTarget
 } from './shared/url.js';
 import { checkLatest, compareVersions } from './shared/update.js';
 import {
@@ -78,7 +79,8 @@ async function finish(job, state, error) {
     setTimeout(() => { chrome.tabs.remove(job.tabId).catch(() => {}); }, 1500);
   }
   // Requests sent from the right-click menu or a notification have no popup to show the result.
-  if (job.via && job.via !== 'popup') notifyJobResult(job).catch(() => {});
+  // The block-page panel shows the result itself, like the popup.
+  if (job.via && job.via !== 'popup' && job.via !== 'panel') notifyJobResult(job).catch(() => {});
 }
 
 // Compose tabs being opened right now; Gmail may ask about a tab before its job is stored.
@@ -175,7 +177,13 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   (async () => {
     switch (msg && msg.type) {
       case 'request':
-        return startRequest(msg.url, msg.reason, msg.fromBlockPage, msg.scope, 'popup', msg.mine);
+        return startRequest(msg.url, msg.reason, msg.fromBlockPage, msg.scope, msg.via === 'panel' && sender.tab ? 'panel' : 'popup', msg.mine);
+      case 'panel_info':
+        return panelInfo(msg, sender);
+      case 'job_status':
+        return jobStatus(msg.id);
+      case 'save_to':
+        return saveTo(msg.to);
       case 'request_parts':
         return startPartsRequest(msg.pageUrl, msg.items, msg.samples, msg.mine);
       case 'hidden_blocks':
@@ -898,3 +906,59 @@ ensureReminderAlarm();
 ensureApprovalAlarm();
 ensureUpdateAlarm();
 chrome.storage.local.get({ update: null }).then(({ update }) => showBadge(update)).catch(() => {});
+
+// ---- The Request panel on the block page itself (content/blockpage.js) ----
+// The panel asks here for everything it shows; the request itself goes through the same 'request' path as the popup.
+function historyNote(h) {
+  if (!h) return null;
+  return {
+    at: h.at, status: h.status === 'approved' ? 'approved' : h.status === 'blocked' ? 'blocked' : 'pending',
+    remindedAt: h.remindedAt || 0, scope: h.scope || 'site', label: (h.reason && h.reason.label) || ''
+  };
+}
+
+async function panelInfo(msg, sender) {
+  const href = (sender.tab && sender.tab.url) || String(msg.href || '');
+  let url = extractBlockedUrl(href) || extractBlockedUrl(String(msg.href || '')) || cleanCandidate(msg.found);
+  let guess = false;
+  if (!url && sender.tab) {
+    const key = 'nav_' + sender.tab.id;
+    const s = await chrome.storage.session.get(key);
+    url = cleanCandidate(s[key]);
+    guess = !!url;
+  }
+  const st = await chrome.storage.local.get({
+    to: DEFAULTS.to, reasons: null, defaultReason: DEFAULTS.defaultReason, history: [],
+    blockPanel: DEFAULTS.blockPanel, blockPanelAuto: DEFAULTS.blockPanelAuto
+  });
+  const list = normalizeReasons(st.reasons);
+  const hit = url ? st.history.find(h => h.url === url && h.kind !== 'parts') : null;
+  return {
+    ok: true, url, guess, why: cleanReason(msg.why),
+    targets: url ? { site: scopeTarget(url, 'site'), page: scopeTarget(url, 'page') } : null,
+    hasTo: isEmail(st.to), to: isEmail(st.to) ? String(st.to).trim() : '',
+    reasons: list.map(r => ({ id: r.id, label: r.label, text: r.text })),
+    defaultReason: defaultReasonId(list, st.defaultReason),
+    settings: { blockPanel: st.blockPanel !== false, blockPanelAuto: st.blockPanelAuto !== false },
+    last: historyNote(hit)
+  };
+}
+
+async function jobStatus(id) {
+  const jobs = await getJobs();
+  const job = jobs[id];
+  if (!job) return { ok: false };
+  let last = null;
+  if (job.state === 'sent') {
+    const { history } = await chrome.storage.local.get({ history: [] });
+    last = historyNote(history.find(h => h.id === job.id) || history.find(h => h.url === job.url));
+  }
+  return { ok: true, state: job.state, error: job.error || '', ended: job.ended || 0, last };
+}
+
+async function saveTo(to) {
+  to = String(to || '').trim();
+  if (!isEmail(to)) return { ok: false, error: 'bad_address' };
+  await chrome.storage.local.set({ to });
+  return { ok: true, to };
+}

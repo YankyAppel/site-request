@@ -11,7 +11,24 @@ async function load() {
   $('body').value = bodyTemplate(s);
   $('checkApproved').checked = !!s.checkApproved;
   $('remind').checked = !!s.remind;
+  renderBlockPanel(s.blockPanel !== false, s.blockPanelAuto !== false);
 }
+
+function renderBlockPanel(on, auto) {
+  $('blockPanel').checked = on;
+  $('blockPanelAuto').checked = auto;
+  $('blockPanelAuto').disabled = !on;
+  document.querySelector('.blockpanel').classList.toggle('off', !on);
+}
+
+$('blockPanel').addEventListener('change', async () => {
+  await chrome.storage.local.set({ blockPanel: $('blockPanel').checked });
+  renderBlockPanel($('blockPanel').checked, $('blockPanelAuto').checked);
+});
+
+$('blockPanelAuto').addEventListener('change', async () => {
+  await chrome.storage.local.set({ blockPanelAuto: $('blockPanelAuto').checked });
+});
 
 $('remind').addEventListener('change', async () => {
   await chrome.storage.local.set({ remind: $('remind').checked });

@@ -186,6 +186,8 @@ export const DEFAULTS = {
   checkApproved: true,
   remind: true,
   defaultReason: '',
+  blockPanel: true,
+  blockPanelAuto: true,
   body: 'Hello,\n\n{ask}\n\n{target}\n\n{why}\n\nSite: {domain}\nPage: {page}\nRequested: {date}\nBlocked as: {reason}\n\nThank you very much.'
 };
 

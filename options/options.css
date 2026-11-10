@@ -83,3 +83,9 @@ input.switch:checked::after { left: 18px; }
 .rmsg.ok { color: #13703f; }
 select { font-family: Lato, sans-serif; font-size: 13px; color: #1d1e26; width: 100%; border: 1px solid #d0d2e0; border-radius: 4px; padding: 7px 9px; background: #fff; }
 .history li .rs { color: #73788F; font-size: 12px; }
+
+/* Request box on block pages */
+.blockpanel .switch-row.sub { margin-top: 12px; font-weight: 400; padding-left: 14px; }
+.blockpanel .hint.sub { padding-left: 14px; }
+.blockpanel.off .sub { opacity: .45; }
+input.switch:disabled { cursor: default; }

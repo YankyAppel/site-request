@@ -2,7 +2,7 @@
 
 A small Chrome extension to request access to a blocked site by email, in one click.
 
-When you land on a block page, open the extension and click **Request this site**. It reads the blocked address (and the reason shown on the block page), writes the request email, and sends it from the Gmail account you are already signed in to in Chrome. You can also request the site of any open tab, type an address by hand, or right-click any link or page.
+When you land on a block page, open the extension and click **Request this site** (or use the **Request this site** box on the block page itself). It reads the blocked address (and the reason shown on the block page), writes the request email, and sends it from the Gmail account you are already signed in to in Chrome. You can also request the site of any open tab, type an address by hand, or right-click any link or page.
 
 ## Install
 
@@ -39,6 +39,19 @@ Say why you need a site, in one tap. Under the address, the popup shows your rea
 In the email, the reason's text appears as a **Reason:** line and your details as a **Details:** paragraph. Both are left out when empty. The same choice works for **Request all**, and a reminder repeats the reason of the original request. Recent requests show the reason under each site.
 
 Make your own reasons in Settings under **Reasons**: add, edit, delete and move them up or down. Each one has a short button name and the text that goes in the email. Four starters come with the extension (For work, For a shiur / learning, For school, For shopping / a purchase). Change or delete them as you like. A reason you change later does not change requests you already sent.
+
+## Request box on the block page
+
+On some block pages there is no button to request the site (for example a **Locked Web Category** page, where only **Report miscategorization** is offered). On those pages the extension adds a **Request this site** box right on the page, under the block details and above **Report miscategorization**. You don't need to open the extension.
+
+The box has everything the popup has: the blocked address, **Whole site** / **Just this page**, your reason buttons, **Add details (optional)** (up to 500 characters) and **Send request**. It sends the same way as the popup: the same Gmail email, your saved address, your request history, the approval check and the reminder. If no address is saved yet, the box asks for it first (**Save**). After sending it shows **Request sent** with the time, and the request's status (**Waiting for approval**, or **Approved** once the check sees the site open). If you already requested the site, it says so.
+
+When the block page has its own request button, the box stays hidden, so you use the page's own button. The extension looks for a visible button, link or form that asks to request, unblock or allow the site (not **Report miscategorization**, which is on every block page). It looks again for a few seconds after the page loads, in case the page's button appears late. A **Locked** page is read as having no request option of its own, unless it clearly shows a request button.
+
+Settings:
+
+- **Show Request button on block pages** (on by default).
+- **Only when the page has no request option of its own** (on by default). Turn it off to show the box on every block page.
 
 ## Right-click
 
@@ -79,6 +92,7 @@ All optional and stored only in your browser:
 - **Gmail account**: only if you are signed in to more than one Google account (0 = first, 1 = second, or the address itself).
 - **Check if my requests were approved**: the background check above.
 - **Offer a reminder after 2 days**: the reminder above.
+- **Show Request button on block pages** and **Only when the page has no request option of its own**: the box on the block page above.
 - **Reasons**: your reason buttons, and the **Default reason** used by the right-click menu and picked first in the popup.
 - **Subject and message**: your own wording. Placeholders: `{url}` full address, `{domain}` site name, `{target}` what is asked for (`*.example.com` for the whole site, or the exact page), `{ask}` the matching request sentence, `{page}` the page you were on (whole-site requests only), `{date}` date and time, `{reason}` the reason shown on the block page, `{why}` the reason you pick and your details. A line with `{reason}`, `{page}` or `{why}` is left out when it has no value. A message of your own without `{why}` gets your reason added at the end.
 
