@@ -175,7 +175,7 @@ export function composeUrl({ to, subject, body, account }) {
 }
 
 export const DEFAULTS = {
-  to: 'zdeutsch@tagemail.org',
+  to: '',
   account: '0',
   name: '',
   phone: '',

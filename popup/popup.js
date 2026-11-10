@@ -7,7 +7,7 @@ let currentJobId = null;
 
 const MESSAGES = {
   bad_url: 'Please enter a valid site address.',
-  no_address: 'Add the email address for requests in Settings first.',
+  no_address: 'Add the email address for requests first.',
   signed_out: 'Gmail is not signed in. Sign in to Gmail in Chrome, then try again.',
   no_send_button: 'Gmail opened, but the Send button was not found.',
   no_confirmation: 'Could not confirm that Gmail sent the email.',
@@ -207,12 +207,43 @@ async function init() {
     renderJob(status);
   }
 
-  const settings = await chrome.storage.local.get(DEFAULTS);
-  if (!isEmail(settings.to)) {
-    showStatus('error', MESSAGES.no_address, false);
-    $('openSettings').hidden = false;
-  }
+  if (!(await hasAddress())) showToSetup(false);
 }
+
+// ---- Where requests go (no address is built in) ----
+async function hasAddress() {
+  const { to } = await chrome.storage.local.get({ to: DEFAULTS.to });
+  return isEmail(to);
+}
+
+function showToSetup(focus) {
+  $('toSetup').hidden = false;
+  $('toNote').className = 'note';
+  $('toNote').textContent = 'The email address of the company that approves your site requests. Nothing is sent until you add it.';
+  if (focus) $('toInput').focus();
+}
+
+async function needAddress() {
+  if (await hasAddress()) return false;
+  showToSetup(true);
+  showStatus('error', MESSAGES.no_address, false);
+  return true;
+}
+
+$('toSave').addEventListener('click', async () => {
+  const to = $('toInput').value.trim();
+  if (!isEmail(to)) {
+    $('toNote').className = 'note bad';
+    $('toNote').textContent = 'Please enter one valid email address.';
+    $('toInput').focus();
+    return;
+  }
+  await chrome.storage.local.set({ to });
+  $('toSetup').hidden = true;
+  showStatus('sent', 'Saved. Requests go to ' + to + '.', false);
+});
+$('toInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('toSave').click(); });
+$('toInput').addEventListener('input', () => { $('toNote').className = 'note'; });
 
 $('request').addEventListener('click', async () => {
   if ($('request').classList.contains('not-active')) return;
@@ -222,6 +253,7 @@ $('request').addEventListener('click', async () => {
     $('url').focus();
     return;
   }
+  if (await needAddress()) return;
   setBusy(true);
   showStatus('sending', 'Sending your request\u2026', false);
   // The reason belongs to the blocked address; it is not sent for an address typed in by hand.
@@ -232,7 +264,7 @@ $('request').addEventListener('click', async () => {
   if (!r || !r.ok) {
     setBusy(false);
     showStatus('error', errorText(r && r.error), false);
-    if (r && r.error === 'no_address') $('openSettings').hidden = false;
+    if (r && r.error === 'no_address') showToSetup(true);
     return;
   }
   currentJobId = r.id;
@@ -334,6 +366,7 @@ async function loadParts() {
 $('requestParts').addEventListener('click', async () => {
   const chosen = chosenParts();
   if (!chosen.length || !activeTab) return;
+  if (await needAddress()) return;
   $('requestParts').disabled = true;
   showStatus('sending', 'Sending your request\u2026', false);
   const r = await chrome.runtime.sendMessage({
@@ -344,7 +377,7 @@ $('requestParts').addEventListener('click', async () => {
   $('requestParts').disabled = false;
   if (!r || !r.ok) {
     showStatus('error', errorText(r && r.error), false);
-    if (r && r.error === 'no_address') $('openSettings').hidden = false;
+    if (r && r.error === 'no_address') showToSetup(true);
     return;
   }
   currentJobId = r.id;
@@ -362,6 +395,7 @@ $('settings').addEventListener('click', () => chrome.runtime.openOptionsPage());
 $('openSettings').addEventListener('click', () => chrome.runtime.openOptionsPage());
 
 chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.to && isEmail(changes.to.newValue)) $('toSetup').hidden = true;
   if ((area === 'local' && changes.history) || (area === 'session' && changes.checking)) loadHistory();
   if (area === 'session' && changes.status && changes.status.newValue) {
     const job = changes.status.newValue;

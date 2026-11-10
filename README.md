@@ -9,7 +9,9 @@ When you land on a block page, open the extension and click **Request this site*
 1. Download `site-request.zip` from the [latest release](https://github.com/YankyAppel/site-request/releases/latest) and unzip it. You get a folder called `site-request`. Keep it somewhere permanent (for example Documents), not in Downloads.
 2. In Chrome, open `chrome://extensions` and turn on **Developer mode** (top right).
 3. Click **Load unpacked** and choose the `site-request` folder.
-4. The Settings page opens. Fill in what you need and click **Save**. Pin the extension (puzzle icon, then the pin) so it is one click away.
+4. The Settings page opens. Enter the email address that handles your site requests in **Send requests to**, fill in anything else you need, and click **Save**. Pin the extension (puzzle icon, then the pin) so it is one click away.
+
+No address is built in. Until you add one, nothing is sent: the popup shows a **Send requests to (email)** field with a **Save** button, and a right-click request shows a notification asking you to set the address in the popup first.
 
 Be signed in to Gmail in the same Chrome profile. Each request is sent from that Gmail account.
 
@@ -62,7 +64,7 @@ To open sites in the background and to notice blocked parts of pages, the extens
 
 All optional and stored only in your browser:
 
-- **Send requests to**: the email address that handles your site requests.
+- **Send requests to**: the email address that handles your site requests. Empty until you add it; nothing is sent without it.
 - **Account details**: name, phone number, account PIN and notes. Filled-in details are added at the bottom of every request; empty ones are left out.
 - **Gmail account**: only if you are signed in to more than one Google account (0 = first, 1 = second, or the address itself).
 - **Check if my requests were approved**: the background check above.

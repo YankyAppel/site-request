@@ -88,7 +88,7 @@ $('form').addEventListener('submit', async e => {
 $('to').addEventListener('input', () => $('to').setCustomValidity(''));
 
 $('reset').addEventListener('click', () => {
-  for (const f of ['to', 'account', 'subject', 'body']) $(f).value = DEFAULTS[f];
+  for (const f of ['account', 'subject', 'body']) $(f).value = DEFAULTS[f];
 });
 
 $('showPin').addEventListener('click', () => {

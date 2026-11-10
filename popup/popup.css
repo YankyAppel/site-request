@@ -143,3 +143,10 @@ button.link.small:disabled { color: #73788F; cursor: default; text-decoration: n
 .parts-list .ad { flex: none; font-size: 10px; font-weight: 700; padding: 0 4px; border-radius: 7px; background: #eceef4; color: #73788F; line-height: 14px; margin-top: 1px; }
 .parts .btn:disabled { opacity: 0.5; cursor: default; }
 .history li .tag.busy { background: #eaf2ff; color: #0a5fe0; animation: pulse 1s ease-in-out infinite; }
+
+.to-setup { margin: 0 18px 10px; padding: 9px 10px 10px; border: 1px solid #c9dcff; background: #f3f8ff; border-radius: 5px; }
+.to-setup label { display: block; font-size: 12px; font-weight: 700; color: #1d1e26; margin-bottom: 6px; }
+.to-setup .to-row { display: flex; gap: 6px; align-items: center; }
+.to-setup .to-row input { flex: 1; min-width: 0; padding: 5px 7px; font-size: 12px; }
+.to-setup .note { margin: 6px 0 0; line-height: 1.35; }
+.to-setup .note.bad { color: #a42323; }

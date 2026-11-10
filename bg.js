@@ -121,6 +121,7 @@ function startReminder(key) {
     const jobs = await getJobs();
     if (Object.values(jobs).some(j => j.kind === 'reminder' && j.entryKey === key && j.state === 'sending')) return { ok: false, error: 'busy' };
     const s = await getSettings();
+    if (!isEmail(s.to)) return { ok: false, error: 'no_address' };
     const mail = buildReminderEmail(s, entry, Date.now());
     if (!isEmail(mail.to)) return { ok: false, error: 'no_address' };
     return sendMail(s, mail, { kind: 'reminder', url: entry.url, domain: entry.domain, entryKey: key, via: 'notification' });
@@ -546,7 +547,9 @@ async function onNotificationClick(id) {
   const key = keyFromReminderId(id);
   if (key) {
     chrome.notifications.clear(id);
-    return startReminder(key);
+    const r = await startReminder(key);
+    if (r && r.error === 'no_address') notifyError(JOB_ERRORS.no_address).catch(() => {});
+    return r;
   }
   if (String(id).startsWith(JOB_NOTE)) {
     chrome.notifications.clear(id);
@@ -574,7 +577,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 const JOB_NOTE = 'sr-job|';
 const JOB_ERRORS = {
   bad_url: 'That is not a site address.',
-  no_address: 'Add the email address for requests in Settings first.',
+  no_address: 'Set the email address for requests in the Site Request popup first (click the extension icon).',
   signed_out: 'Gmail is not signed in. Sign in to Gmail in Chrome, then try again.',
   no_send_button: 'Gmail opened, but the Send button was not found.',
   no_confirmation: 'Could not confirm that Gmail sent the email.',
@@ -681,7 +684,6 @@ async function onMenuClick(info, tab) {
   }
   const r = await startRequest(raw, reason, fromBlockPage, scope, 'menu');
   if (!r.ok) {
-    if (r.error === 'no_address') chrome.runtime.openOptionsPage();
     notifyError(JOB_ERRORS[r.error] || 'The request could not be sent.').catch(() => {});
   }
   return r;

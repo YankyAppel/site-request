@@ -35,6 +35,14 @@
     <p class="note" id="reason" hidden></p>
     <p class="note" id="note" hidden></p>
   </section>
+  <section class="to-setup" id="toSetup" hidden>
+    <label for="toInput">Send requests to (email)</label>
+    <div class="to-row">
+      <input id="toInput" type="email" spellcheck="false" autocomplete="email" placeholder="name@example.com">
+      <button class="btn tiny" id="toSave" type="button">Save</button>
+    </div>
+    <p class="note" id="toNote">The email address of the company that approves your site requests. Nothing is sent until you add it.</p>
+  </section>
   <p class="item primary" id="request">Request this site</p>
   <div class="status" id="status" hidden>
     <span class="dot" id="statusIcon"></span><span id="statusText"></span>
