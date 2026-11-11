@@ -164,6 +164,81 @@
     host.dataset.at = 'end';
   }
 
+  // ---------- Looks (1.5.2): borrow the page's own font, colours and info-row columns ----------
+  const RE_ROW_LABEL = /^\s*(filter action|why\s*\??|category|admin)\s*:?\s*$/i;
+  function infoLabels() {
+    const out = [];
+    if (!document.body) return out;
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = w.nextNode())) {
+      const el = n.parentElement;
+      if (!el || (host && host.contains(el))) continue;
+      if (RE_ROW_LABEL.test(n.nodeValue || '') && String(el.textContent || '').trim().length < 30) out.push(el);
+    }
+    return out;
+  }
+  function colourOf(el, prop) {
+    const c = el ? getComputedStyle(el)[prop] : '';
+    return c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c) ? c : '';
+  }
+  function measure() {
+    if (!host || !host.isConnected || !shadow) return;
+    const set = (k, v) => { if (v) host.style.setProperty(k, v); else host.style.removeProperty(k); };
+    try {
+      const labels = infoLabels().filter(isVisible);
+      const label = labels[labels.length - 1] || null;
+      // the value next to the label: the first visible element after it whose box starts to its right
+      let value = null, rowBox = null;
+      if (label) {
+        const lb = label.getBoundingClientRect();
+        let row = label;
+        for (let i = 0; i < 6 && row.parentElement && row.parentElement !== document.body; i++) {
+          row = row.parentElement;
+          if (String(row.textContent || '').trim().length > String(label.textContent || '').trim().length + 1) break;
+        }
+        for (const el of row.querySelectorAll('*')) {
+          if (el === label || el.contains(label) || label.contains(el) || !isVisible(el)) continue;
+          const b = el.getBoundingClientRect();
+          if (b.left >= lb.right - 2 && Math.abs(b.top - lb.top) < lb.height * 1.5 && String(el.textContent || '').trim()) { value = el; break; }
+        }
+        const tbl = label.closest('table');
+        rowBox = (tbl || row).getBoundingClientRect();
+        const hb = host.getBoundingClientRect();
+        const valLeft = value ? value.getBoundingClientRect().left : 0;
+        const left = Math.min(lb.left, rowBox.left + 0);
+        const width = Math.max(rowBox.right, value ? value.getBoundingClientRect().right : 0) - left;
+        const PAD = 0;    // no padding or outline: the rows line up with the page's rows
+        if (value && width > 300 && hb.width > 0) {
+          const w = width + 2 * PAD;
+          const off = Math.round(left - PAD - hb.left);
+          const fits = off >= 0 && off + w <= hb.width + 1;
+          set('--sr-w', Math.round(fits ? w : Math.min(w, hb.width)) + 'px');
+          set('--sr-c', Math.round(valLeft - lb.left) + 'px');
+          set('--sr-l', Math.round(Math.max(0, lb.left - left)) + 'px');
+          set('--sr-ml', fits ? off + 'px' : '');
+        } else { set('--sr-w', ''); set('--sr-c', ''); set('--sr-l', ''); set('--sr-ml', ''); }
+        set('--sr-k', colourOf(label, 'color'));
+      }
+      const txt = value || label || document.body;
+      const cs = getComputedStyle(txt);
+      set('--sr-ff', cs.fontFamily ? cs.fontFamily + ', "SR Lato", Lato, "Segoe UI", Arial, sans-serif' : '');
+      const fs = parseFloat(cs.fontSize);
+      set('--sr-fs', fs >= 12 && fs <= 22 ? fs + 'px' : '');
+      // the page's dark text: the "miscategorized? Let us know" line, else the value column
+      const rep = textNodeMatching(/let us know|mis[\s-]?categori[sz]ed\?/i);
+      const darkEl = (rep && rep.parentElement && !rep.parentElement.closest('a')) ? rep.parentElement : (value && !/blocked/i.test(value.textContent) ? value : null);
+      set('--sr-t', darkEl ? colourOf(darkEl, 'color') : '');
+      // the page's link blue ("Report miscategorization", the admin link, the blocked address)
+      const link = Array.from(document.querySelectorAll('a')).find(a => !(host && host.contains(a)) && isVisible(a) && /mis[\s-]?categori/i.test(a.textContent || ''))
+        || Array.from(document.querySelectorAll('a')).find(a => !(host && host.contains(a)) && isVisible(a));
+      const blue = link ? colourOf(link, 'color') : '';
+      set('--sr-a', blue && !/rgb\((0, 0, 0|51, 51, 51|255, 255, 255)\)/.test(blue) ? blue : '');
+      host.dataset.narrow = host.getBoundingClientRect().width < 440 ? '1' : '0';
+    } catch (e) { /* the built-in looks are fine */ }
+  }
+  addEventListener('resize', () => { if (host && host.style.display !== 'none') measure(); });
+
   // ---------- The panel ----------
   const MESSAGES = {
     bad_url: 'Please enter a valid site address.',
@@ -177,86 +252,83 @@
   const DETAILS_MAX = 500;
   const MARK = '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#1a7db6"/><path fill="#fff" d="M5.6 6.1c-.2-.6.4-1.1 1-.8l12 5.9c.5.3.5 1 0 1.3l-12 5.9c-.6.3-1.2-.2-1-.8L7.4 12 5.6 6.1zm3.2 6.6-1.3 3.8 8.6-4.3-8.6-4.4 1.3 3.9H13v1H8.8z"/></svg>';
 
-  const CHECK = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#fff"/><path d="M7 12.4l3.2 3.2L17.2 8.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const CHECK = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11"/><path d="M7 12.4l3.2 3.2L17.2 8.6" fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+  // 1.5.2: no card. The box is drawn as part of the page: the page's own font, sizes and colours (read from the
+  // page when it can, see measure()), its two-column info rows, centered like its content. Buttons: the page's
+  // light gray-blue (#ecf0f2), a thin blue outline and blue text.
   const CSS = `
-:host { all: initial; display: block; width: 100%; max-width: 560px; margin: 18px auto 14px; text-align: left; }
+:host { all: initial; display: block; width: 100%; margin: 34px auto 6px; text-align: left; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-.card { font-family: "SR Lato", Lato, "Segoe UI", Roboto, Arial, sans-serif; color: #1d1e26; background: #fff;
-  border: 1px solid #d0d2e0; border-radius: 10px; box-shadow: 0 2px 10px rgba(29,30,38,.07); padding: 14px 16px 15px; font-size: 13px; line-height: 1.35; }
-.head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
-.head svg { display: block; flex: none; }
-.head .t { font-weight: 700; font-size: 15px; color: #1d1e26; }
-.head .s { margin-left: auto; font-size: 12px; color: #73788F; }
-.addr { font-size: 13px; color: #3b3e4f; background: #F6F7FB; border: 1px solid #e3e5ee; border-radius: 6px; padding: 7px 9px;
-  overflow-wrap: anywhere; word-break: break-all; }
-.addr.guess { border-color: #f2c94c; }
-label.l { display: block; font-size: 12px; font-weight: 700; color: #3b3e4f; margin: 11px 0 5px; }
-.scope { display: flex; border: 1px solid #d0d2e0; border-radius: 6px; overflow: hidden; margin-top: 10px; }
-.scope label { flex: 1; position: relative; cursor: pointer; margin: 0; }
-.scope input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.scope span { display: block; text-align: center; padding: 6px 4px; font-size: 12.5px; color: #3b3e4f; }
-.scope label + label span { border-left: 1px solid #d0d2e0; }
-.scope input:checked + span { background: #1a7db6; color: #fff; font-weight: 700; }
-.scope input:focus-visible + span { outline: 2px solid #9cc9e3; outline-offset: -2px; }
-.note { font-size: 12px; color: #73788F; margin: 5px 0 0; overflow-wrap: anywhere; }
-.note.bad { color: #a42323; }
-.chips { display: flex; flex-wrap: wrap; gap: 5px; }
-.chip { font: inherit; font-size: 12.5px; color: #1d1e26; background: #fff; border: 1px solid #d0d2e0; border-radius: 14px; padding: 4px 11px; cursor: pointer; }
-.chip:hover { border-color: #9cc9e3; }
-.chip.on { background: #1a7db6; border-color: #1a7db6; color: #fff; font-weight: 700; }
-.chip:focus-visible { outline: 2px solid #9cc9e3; outline-offset: 1px; }
-input.in, textarea { font: inherit; font-size: 13px; color: #1d1e26; width: 100%; border: 1px solid #d0d2e0; border-radius: 6px; padding: 7px 9px; outline: none; background: #fff; margin: 0; }
-input.in:focus, textarea:focus { border-color: #1a7db6; }
-textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; display: block; }
-.count { margin: 2px 0 0; font-size: 11px; color: #73788F; text-align: right; }
-.count.near { color: #a42323; }
-.row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
-.btn { font: inherit; font-size: 14px; font-weight: 700; color: #fff; background: #1a7db6; border: 0; border-radius: 6px; padding: 9px 18px; cursor: pointer; }
-.btn:hover { background: #156a9c; }
-.btn:active { background: #115a85; }
-.btn[disabled] { background: #9cc9e3; cursor: default; }
-.btn.small { font-size: 13px; padding: 7px 12px; }
-.tobox { margin-top: 12px; padding: 10px; border: 1px solid #f2c94c; background: #FFFBEA; border-radius: 6px; }
-.tobox .row { margin-top: 6px; }
-.status { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 10px; }
-.status .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: #73788F; }
-.status.sending .dot { background: #1a7db6; animation: pulse 1s ease-in-out infinite; }
-.status.sent .dot { background: #13703f; }
-.status.sent .txt b { color: #13703f; }
-.status.error .dot { background: #a42323; }
-.status.error .txt { color: #a42323; }
-.status .txt { flex: 1; }
-.status .open { font: inherit; font-size: 12px; color: #1a7db6; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
-.tag { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 9px; padding: 1px 7px; margin-left: 4px; background: #F1F2F7; color: #3b3e4f; vertical-align: 1px; }
-.tag.ok { background: #e3f4ea; color: #13703f; }
-.goes { margin-left: auto; font-size: 11.5px; color: #73788F; overflow-wrap: anywhere; text-align: right; }
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
-.card.done { border-color: #1a7db6; }
-.card.done.ok { border-color: #13703f; }
-.bar { display: flex; align-items: center; gap: 8px; margin: -14px -16px 10px; padding: 10px 16px; border-radius: 9px 9px 0 0;
-  background: #1a7db6; color: #fff; font-size: 14px; }
-.card.ok .bar { background: #13703f; }
+.card { font-family: var(--sr-ff, "SR Lato", Lato, "Segoe UI", Roboto, Arial, sans-serif); color: var(--sr-t, #333);
+  font-size: var(--sr-fs, 17px); line-height: 1.4; width: var(--sr-w, 640px); max-width: 100%; margin: 0 auto 0 var(--sr-ml, auto);
+  background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+.head, .bar { text-align: center; margin: 0 0 12px; font-weight: 400; color: var(--sr-t, #333); }
+.bar { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.bar b { font-weight: 700; }
 .bar svg { display: block; flex: none; }
-.bar b { font-weight: 700; font-size: 15px; }
-.bar .when { font-size: 13px; opacity: .92; }
-.bar .s { margin-left: auto; font-size: 12px; opacity: .8; }
-.dinfo { margin: 0 0 10px; }
-.dline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; border-radius: 12px; padding: 3px 10px 3px 8px; }
-.pill:before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.pill.wait { background: #FFF3D6; color: #9a5b00; }
-.pill.ok { background: #e3f4ea; color: #13703f; }
-.btn.go { background: #13703f; }
-.btn.go:hover { background: #0f5c33; }
-.meta { margin: 6px 0 0; font-size: 12.5px; color: #3b3e4f; overflow-wrap: anywhere; }
-.meta.times { color: #73788F; font-size: 12px; }
-.bar svg path { stroke: #1a7db6; }
-.card.ok .bar svg path { stroke: #13703f; }
-.hint { margin: 10px 0 0; padding: 6px 9px; font-size: 12px; color: #3b3e4f; background: #F6F7FB; border-radius: 6px; }
-.btn.light { border: 1px solid #d0d2e0; color: #1a7db6; font-weight: 700; background: #fff; }
-.btn.light:hover { background: #F1F7FB; border-color: #9cc9e3; }
+.bar svg circle { fill: var(--sr-a, #1a7db6); }
+.card.ok .bar svg circle { fill: #3c8d5a; }
+.bar svg path { stroke: #fff; }
+.bar .when { color: var(--sr-k, #9a9a9a); }
+.r { display: grid; grid-template-columns: var(--sr-c, 45%) minmax(0, 1fr); align-items: baseline; padding: 8px 0 8px var(--sr-l, 0px); }
+.k { color: var(--sr-k, #9a9a9a); padding-right: 12px; }
+.v { min-width: 0; overflow-wrap: anywhere; }
+:host([data-narrow="1"]) .r { grid-template-columns: minmax(0, 1fr); padding-left: 0; }
+:host([data-narrow="1"]) .k { padding: 0 0 3px; }
+.addr { overflow-wrap: anywhere; word-break: break-all; }
+.addr.guess { text-decoration: underline dotted #c98a12; text-underline-offset: 3px; }
+.note { font-size: .86em; color: var(--sr-k, #9a9a9a); margin: 3px 0 0; overflow-wrap: anywhere; }
+.note.bad { color: #c9302c; }
+.scope, .chips { display: flex; flex-wrap: wrap; gap: 4px 20px; border: 0; margin: 0; }
+.scope label { position: relative; cursor: pointer; margin: 0; }
+.scope input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.scope span, .chip { display: inline-flex; align-items: center; gap: 7px; font: inherit; color: var(--sr-t, #333); background: none;
+  border: 0; border-radius: 0; padding: 0; margin: 0; cursor: pointer; text-align: left; }
+.scope span:before, .chip:before { content: ''; flex: none; width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid #b8b8b8; background: transparent; }
+.scope input:checked + span, .chip.on { color: var(--sr-a, #1a7db6); font-weight: 700; }
+.scope input:checked + span:before, .chip.on:before { border-color: var(--sr-a, #1a7db6); background: var(--sr-a, #1a7db6); box-shadow: inset 0 0 0 2.5px #fff; }
+.scope span:hover, .chip:hover { color: var(--sr-a, #1a7db6); }
+.scope input:focus-visible + span, .chip:focus-visible { outline: 2px solid rgba(26,125,182,.35); outline-offset: 2px; }
+input.in, textarea { font: inherit; font-size: .94em; color: var(--sr-t, #333); width: 100%; border: 1px solid #d6d6d6; border-radius: 4px;
+  padding: 7px 9px; outline: none; background: #fff; margin: 0; box-shadow: none; }
+input.in:focus, textarea:focus { border-color: var(--sr-a, #1a7db6); }
+textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; display: block; }
+.count { margin: 2px 0 0; font-size: .76em; color: var(--sr-k, #9a9a9a); text-align: right; }
+.count.near { color: #c9302c; }
+.row { display: flex; gap: 10px; align-items: center; }
+.act { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 14px; text-align: center; }
+/* buttons: the page's light gray-blue, a thin blue outline, blue text, the page's font */
+.btn { font: inherit; font-size: .94em; font-weight: 700; color: var(--sr-a, #1a7db6); background: #ecf0f2; border: 1px solid var(--sr-a, #1a7db6);
+  border-radius: 4px; padding: 8px 26px; cursor: pointer; box-shadow: none; line-height: 1.3; }
+.btn:hover { background: #e1e8ed; }
+.btn:active { background: #d6e0e7; }
+.btn:focus-visible { outline: 2px solid rgba(26,125,182,.35); outline-offset: 2px; }
+.btn[disabled] { opacity: .45; cursor: default; background: #ecf0f2; }
+.btn.small { font-size: .88em; padding: 6px 14px; }
+.btn.go { margin-left: 14px; padding: 4px 14px; font-size: .88em; }
+.goes { font-size: .86em; color: var(--sr-k, #9a9a9a); overflow-wrap: anywhere; }
+.tobox .row { margin-top: 0; }
+.status { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: .9em; margin-top: 10px; text-align: center; flex-wrap: wrap; }
+.status .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--sr-k, #9a9a9a); }
+.status.sending .dot { background: var(--sr-a, #1a7db6); animation: pulse 1s ease-in-out infinite; }
+.status.sent .dot { background: #3c8d5a; }
+.status.error .dot { background: #c9302c; }
+.status.error .txt { color: #c9302c; }
+.status .open { font: inherit; color: var(--sr-a, #1a7db6); background: none; border: 0; padding: 0; cursor: pointer; font-weight: 700; }
+.tag { font-weight: 400; color: var(--sr-k, #9a9a9a); }
+.tag:before { content: ' \\00b7  '; }
+.tag.ok { color: #3c8d5a; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+.dline { display: flex; align-items: baseline; flex-wrap: wrap; }
+.pill { display: inline-flex; align-items: baseline; gap: 9px; font-weight: 400; background: none; padding: 0; }
+.pill:before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; transform: translateY(-2px); }
+.pill.wait { color: #b8730a; }
+.pill.ok { color: #3c8d5a; }
+.meta { margin: 0; overflow-wrap: anywhere; }
+.meta.times { color: var(--sr-k, #9a9a9a); font-size: .86em; margin-top: 2px; }
+.hint { margin: 0 0 4px; font-size: .86em; color: var(--sr-k, #9a9a9a); text-align: center; font-style: italic; }
 `;
 
   let shadow = null;
@@ -310,38 +382,35 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
     host = document.createElement('site-request-panel');
     host.id = 'site-request-panel';
     shadow = host.attachShadow({ mode: 'open' });
+    const row = (k, v, id) => '<div class="r"' + (id ? ' id="' + id + '"' : '') + '><span class="k">' + k + '</span><div class="v">' + v + '</div></div>';
     shadow.innerHTML = '<style>' + CSS + '</style>' +
-      '<div class="card" id="card" role="region" aria-label="Site Request">' +
-        '<div class="bar" id="bar" hidden>' + CHECK + '<b>Already requested</b><span class="when" id="doneWhen"></span><span class="s">Site Request</span></div>' +
+      '<div class="card" id="card" role="region" aria-label="Request this site">' +
+        '<div class="bar" id="bar" hidden>' + CHECK + '<b>Already requested</b><span class="when" id="doneWhen"></span></div>' +
         '<div class="dinfo" id="dinfo" hidden>' +
-          '<div class="dline"><span class="pill wait" id="doneStatus">Waiting for approval</span>' +
-          '<button class="btn small go" id="reload" type="button" hidden>Reload page</button></div>' +
-          '<p class="meta" id="doneMeta"></p>' +
-          '<p class="meta times" id="doneCount" hidden></p>' +
+          row('Status:', '<div class="dline"><span class="pill wait" id="doneStatus">Waiting for approval</span>' +
+            '<button class="btn small go" id="reload" type="button" hidden>Reload page</button></div>') +
+          row('Requested:', '<p class="meta" id="doneMeta"></p><p class="meta times" id="doneCount" hidden></p>') +
         '</div>' +
-        '<div class="head" id="head">' + MARK + '<span class="t">Request this site</span><span class="s">Site Request</span></div>' +
-        '<div class="addr" id="addr"></div>' +
-        '<input class="in" id="urlIn" type="text" placeholder="Site address, e.g. example.com" hidden>' +
-        '<p class="note" id="prev" hidden></p>' +
+        '<div class="head" id="head">Need this site opened? Request this site:</div>' +
+        row('Site:', '<div class="addr" id="addr"></div>' +
+          '<input class="in" id="urlIn" type="text" placeholder="Site address, e.g. example.com" hidden>' +
+          '<p class="note" id="prev" hidden></p>', 'addrRow') +
         '<div id="form">' +
         '<p class="hint" id="pageHint" hidden>Earlier request was for this page only</p>' +
-        '<div class="scope" id="scope" role="radiogroup" aria-label="What to request">' +
+        row('Request:', '<div class="scope" id="scope" role="radiogroup" aria-label="What to request">' +
           '<label><input type="radio" name="scope" value="site" checked><span>Whole site</span></label>' +
           '<label><input type="radio" name="scope" value="page"><span>Just this page</span></label>' +
-        '</div>' +
-        '<p class="note" id="scopeNote"></p>' +
-        '<label class="l">Reason</label>' +
-        '<div class="chips" id="chips" role="radiogroup" aria-label="Reason"></div>' +
-        '<label class="l" for="details">Add details <span style="font-weight:400;color:#73788F">(optional)</span></label>' +
-        '<textarea id="details" maxlength="' + DETAILS_MAX + '" rows="1"></textarea>' +
-        '<p class="count" id="count" hidden></p>' +
+          '</div><p class="note" id="scopeNote"></p>') +
+        row('Reason:', '<div class="chips" id="chips" role="radiogroup" aria-label="Reason"></div>') +
+        row('<label for="details">Details (optional):</label>',
+          '<textarea id="details" maxlength="' + DETAILS_MAX + '" rows="1"></textarea><p class="count" id="count" hidden></p>') +
         '</div>' +
         '<div class="tobox" id="tobox" hidden>' +
-          '<label class="l" for="toIn" style="margin-top:0">Send requests to (email)</label>' +
-          '<div class="row"><input class="in" id="toIn" type="email" placeholder="requests@example.com"><button class="btn small" id="toSave" type="button">Save</button></div>' +
-          '<p class="note" id="toNote">The email address of the company that approves your site requests. Save it first; nothing is sent until you do.</p>' +
+          row('<label for="toIn">Send requests to:</label>',
+            '<div class="row"><input class="in" id="toIn" type="email" placeholder="requests@example.com"><button class="btn small" id="toSave" type="button">Save</button></div>' +
+            '<p class="note" id="toNote">The email address of the company that approves your site requests. Save it first; nothing is sent until you do.</p>') +
         '</div>' +
-        '<div class="row"><button class="btn" id="send" type="button">Send request</button><span class="goes" id="goes"></span></div>' +
+        '<div class="act"><button class="btn" id="send" type="button">Send request</button><span class="goes" id="goes"></span></div>' +
         '<div class="status" id="status" hidden><span class="dot"></span><span class="txt" id="statusText"></span><button class="open" id="openMail" type="button" hidden>Open the email</button></div>' +
       '</div>';
 
@@ -458,6 +527,8 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
       send.disabled = busy;
       send.title = '';
       $('tobox').hidden = true;
+      // 1.5.2 fix: the folded view says where a new request would go (it was empty on a fresh load)
+      $('goes').textContent = info && info.hasTo && info.to ? 'Goes to ' + info.to : '';
       return;
     }
     send.textContent = requested() ? 'Send again' : 'Send request';
@@ -627,6 +698,7 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
       if (!host.isConnected || host.hidden) { host.hidden = false; }
       place();
       host.style.display = '';
+      measure();
     } else {
       host.style.display = 'none';
       if (!host.isConnected) place();
