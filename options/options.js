@@ -5,6 +5,78 @@ import { normalizeReasons, addReason, updateReason, deleteReason, moveReason, de
 const $ = id => document.getElementById(id);
 const FIELDS = ['to', 'name', 'phone', 'pin', 'notes', 'account', 'subject', 'body'];
 
+
+// ---- 1.5.3: saved fields show as text, with Edit to change them ----
+function fieldText(f, v) {
+  v = String(v || '');
+  if (f === 'pin') return v ? '\u2022'.repeat(Math.min(v.length, 8)) : '';
+  if (f === 'account') return v === '0' || v === '' ? 'First account (0)' : v;
+  if (f === 'body') { const l = v.split('\n'); return l.slice(0, 4).join('\n') + (l.length > 4 ? '\n\u2026' : ''); }
+  return v;
+}
+function sectionOf(f) { return $(f) && $(f).closest('section'); }
+function syncBar() {
+  const editing = FIELDS.some(f => { const s = sectionOf(f); return s && !s.classList.contains('viewing'); });
+  document.querySelector('#form .actions').classList.toggle('idle', !editing);
+}
+function setupViews() {
+  for (const f of FIELDS) {
+    const sec = sectionOf(f);
+    if (!sec || sec.querySelector('.view')) continue;
+    const v = document.createElement('div');
+    v.className = 'view';
+    const t = document.createElement('div');
+    t.className = 'val'; t.id = f + 'View';
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn light small edit'; b.textContent = 'Edit'; b.id = f + 'Edit';
+    b.addEventListener('click', () => { sec.classList.remove('viewing'); syncBar(); $(f).focus(); });
+    v.append(t, b);
+    sec.querySelector('label').after(v);
+  }
+}
+function showViews(setUp) {
+  for (const f of FIELDS) {
+    const sec = sectionOf(f); if (!sec) continue;
+    const val = $(f).value.trim();
+    const txt = fieldText(f, $(f).value);
+    $(f + 'View').textContent = txt || 'Not set';
+    $(f + 'View').classList.toggle('empty', !txt);
+    // first setup (no address saved yet): everything stays open; after that, every field is locked until Edit
+    sec.classList.toggle('viewing', setUp ? true : !!val);
+  }
+  syncBar();
+  if ($('pin').type === 'text') { $('pin').type = 'password'; $('showPin').textContent = 'Show'; }
+}
+setupViews();
+
+// ---- 1.5.3: sidebar with sections; one section shown at a time ----
+const PANE_ORDER = ['details', 'email', 'reasons', 'block', 'approvals', 'updates', 'history'];
+function setupSide() {
+  const side = $('side');
+  const panes = [...document.querySelectorAll('.pane')];
+  for (const id of PANE_ORDER) {
+    const p = panes.find(x => x.dataset.pane === id); if (!p) continue;
+    const a = document.createElement('button');
+    a.type = 'button'; a.className = 'navi'; a.dataset.pane = id; a.id = 'nav-' + id;
+    a.textContent = p.dataset.title;
+    a.addEventListener('click', () => showPane(id));
+    side.append(a);
+  }
+  const h = String(location.hash || '').slice(1);
+  showPane(PANE_ORDER.includes(h) ? h : 'details');
+}
+function showPane(id) {
+  for (const p of document.querySelectorAll('.pane')) p.hidden = p.dataset.pane !== id;
+  for (const b of document.querySelectorAll('.navi')) b.classList.toggle('on', b.dataset.pane === id);
+  const formPane = id === 'details' || id === 'email';
+  document.querySelector('#form .actions').hidden = !formPane;
+  document.querySelector('.col.left').hidden = !formPane;
+  document.querySelector('.col.right').hidden = formPane;
+  try { history.replaceState(null, '', '#' + id); } catch (e) {}
+  window.scrollTo(0, 0);
+}
+setupSide();
+
 async function load() {
   const s = await chrome.storage.local.get(DEFAULTS);
   for (const f of FIELDS) $(f).value = s[f];
@@ -12,6 +84,7 @@ async function load() {
   $('checkApproved').checked = !!s.checkApproved;
   $('remind').checked = !!s.remind;
   renderBlockPanel(s.blockPanel !== false, s.blockPanelAuto !== false);
+  showViews(!!String(s.to || '').trim());
 }
 
 function renderBlockPanel(on, auto) {
@@ -254,6 +327,7 @@ $('form').addEventListener('submit', async e => {
     subject: $('subject').value || DEFAULTS.subject,
     body: $('body').value || DEFAULTS.body
   });
+  showViews(!!to);
   $('saved').hidden = false;
   setTimeout(() => { $('saved').hidden = true; }, 2000);
 });
@@ -261,7 +335,8 @@ $('form').addEventListener('submit', async e => {
 $('to').addEventListener('input', () => $('to').setCustomValidity(''));
 
 $('reset').addEventListener('click', () => {
-  for (const f of ['account', 'subject', 'body']) $(f).value = DEFAULTS[f];
+  for (const f of ['account', 'subject', 'body']) { $(f).value = DEFAULTS[f]; const sec = sectionOf(f); if (sec) sec.classList.remove('viewing'); }
+  syncBar();
 });
 
 $('showPin').addEventListener('click', () => {

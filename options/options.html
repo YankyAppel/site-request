@@ -8,13 +8,18 @@
   <title>Site Request — Settings</title>
 </head>
 <body>
-<div class="card">
+<div class="page">
   <header>
     <img class="mark" src="../images/logo-mark.svg" alt="">
     <span class="word">Site Request</span>
     <span class="sub">Settings · <span id="version"></span></span>
   </header>
+  <div class="shell">
+  <nav class="side" id="side"></nav>
+  <div class="cols">
+  <div class="col left">
   <form id="form">
+    <div class="pane" data-pane="details" data-title="Send to &amp; details">
     <section>
       <label for="to">Send requests to</label>
       <input id="to" type="email" placeholder="requests@example.com">
@@ -43,6 +48,8 @@
       <label for="notes">Other details / notes</label>
       <textarea id="notes" rows="2"></textarea>
     </section>
+    </div>
+    <div class="pane" data-pane="email" data-title="Email">
     <h2 class="group">Email</h2>
     <section>
       <label for="account">Gmail account <span class="opt">(optional)</span></label>
@@ -58,13 +65,16 @@
       <textarea id="body" rows="11"></textarea>
       <p class="hint">You can use {url} for the full address, {domain} for the site name, {target} for what you ask for (the whole site as *.example.com, or just the page), {ask} for the matching request sentence, {page} for the page you were on (whole-site requests only), {date} for the date and time, {reason} for the reason shown on the block page, and {why} for the reason you pick and your details. A line with {reason}, {page} or {why} is left out when it has no value.</p>
     </section>
+    </div>
     <div class="actions">
       <button class="btn" type="submit">Save</button>
       <button class="btn light" type="button" id="reset">Restore defaults</button>
       <span class="saved" id="saved" hidden>Saved ✓</span>
     </div>
   </form>
-  <div class="reasons-box" id="reasonsBox">
+  </div>
+  <div class="col right">
+  <div class="reasons-box pane" id="reasonsBox" data-pane="reasons" data-title="Reasons">
     <h2>Reasons</h2>
     <p class="hint">Pick one with one tap when you send a request. Its text goes in the email as "Reason: …".</p>
     <ul class="reasons" id="reasonList"></ul>
@@ -90,6 +100,7 @@
       <p class="hint">Used by the right-click menu and picked first in the popup. To choose another one from the right-click menu, use "Request with reason…".</p>
     </section>
   </div>
+  <div class="pane" data-pane="approvals" data-title="Approvals &amp; reminders">
   <div class="approval">
     <label class="switch-row" for="checkApproved">
       <span>Check if my requests were approved</span>
@@ -104,7 +115,8 @@
     </label>
     <p class="hint">If a request is still not open 2 days after you sent it, you get a notification. Click it to send a short follow-up email. Each request is reminded once at most.</p>
   </div>
-  <div class="approval blockpanel">
+  </div>
+  <div class="approval blockpanel pane" data-pane="block" data-title="Block page">
     <label class="switch-row" for="blockPanel">
       <span>Show Request button on block pages</span>
       <input type="checkbox" id="blockPanel" class="switch">
@@ -116,7 +128,7 @@
     </label>
     <p class="hint sub">When the block page already has its own request button, the box stays hidden. Turn this off to always show it.</p>
   </div>
-  <div class="updates">
+  <div class="updates pane" data-pane="updates" data-title="Updates">
     <div class="row">
       <h2>Updates</h2>
       <span class="cur">Version <span id="version2"></span></span>
@@ -130,12 +142,15 @@
     </div>
     <p class="hint" id="updateSteps" hidden>Unzip the downloaded file and copy everything from its site-request folder into your site-request folder (replace the files). Then click Reload after update. Your settings stay.</p>
   </div>
-  <div class="history">
+  <div class="history pane" data-pane="history" data-title="Sent requests">
     <div class="row">
       <h2>Sent requests</h2>
       <button class="btn light small" type="button" id="clear">Clear list</button>
     </div>
     <ul id="history"></ul>
+  </div>
+  </div>
+  </div>
   </div>
 </div>
 <script type="module" src="options.js"></script>

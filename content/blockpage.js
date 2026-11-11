@@ -142,8 +142,42 @@
     return last;
   }
 
+  // 1.5.3: right under the blocked address, so the form is on the first screen without scrolling
+  function blockedUrlEl() {
+    if (!document.body) return null;
+    let target = '';
+    try { target = new URLSearchParams(location.search).get('redirectUrl') || ''; } catch (e) {}
+    const norm = s => String(s || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+    const t = norm(target);
+    if (t) {
+      for (const a of document.querySelectorAll('a, span, div, p')) {
+        if (host && host.contains(a)) continue;
+        if (a.children.length > 1) continue;
+        const txt = norm(a.textContent);
+        if (txt && (txt === t || (txt.length > 6 && t.startsWith(txt)) || (txt.length > 6 && txt.startsWith(t))) && isVisible(a)) return a;
+      }
+    }
+    const lab = textNodeMatching(/url\s+blocked/i);
+    if (lab) {
+      let el = wrapperOf(lab);
+      const nx = el.nextElementSibling;
+      if (nx && String(nx.textContent || '').trim() && nx.getBoundingClientRect().height < 80) return nx;
+      return el;
+    }
+    return null;
+  }
+
   function place() {
     if (!host) return;
+    const u = blockedUrlEl();
+    if (u) {
+      let el = u;
+      while (el.parentElement && el.parentElement !== document.body &&
+             String(el.parentElement.textContent || '').trim() === String(el.textContent || '').trim()) el = el.parentElement;
+      if (el.parentElement && el.nextSibling !== host) el.parentElement.insertBefore(host, el.nextSibling);
+      host.dataset.at = 'url';
+      return;
+    }
     const rep = textNodeMatching(RE_REPORT);
     if (rep) {
       const el = reportBlock(rep);
@@ -302,6 +336,7 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
 /* buttons: the page's light gray-blue, a thin blue outline, blue text, the page's font */
 .btn { font: inherit; font-size: .94em; font-weight: 700; color: var(--sr-a, #1a7db6); background: #ecf0f2; border: 1px solid var(--sr-a, #1a7db6);
   border-radius: 4px; padding: 8px 26px; cursor: pointer; box-shadow: none; line-height: 1.3; }
+.btn { white-space: nowrap; flex-shrink: 0; }
 .btn:hover { background: #e1e8ed; }
 .btn:active { background: #d6e0e7; }
 .btn:focus-visible { outline: 2px solid rgba(26,125,182,.35); outline-offset: 2px; }
