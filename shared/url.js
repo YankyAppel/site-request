@@ -185,6 +185,7 @@ export const DEFAULTS = {
   subject: 'Site request: {domain}',
   checkApproved: true,
   remind: true,
+  callNumber: '',
   defaultReason: '',
   blockPanel: true,
   blockPanelAuto: true,
@@ -313,3 +314,4 @@ export function buildReminderEmail(s, entry, now) {
       '. It is still blocked:\n\n' + what + (why ? '\n\n' + why : '') + '\n\nCould you please take a look?\n\nThank you very much.' + detailsBlock(s)
   };
 }
+

@@ -42,7 +42,13 @@ function renderJob(job) {
     showStatus('sent', 'Request sent \u2713', false);
     setBusy(false);
     loadHistory();
-    if (new URLSearchParams(location.search).has('window')) setTimeout(() => window.close(), 2500);
+    chrome.storage.local.get({ callNumber: '' }, r => {
+      const n = String((r && r.callNumber) || '').trim();
+      if (!n || currentJobId !== job.id) return;
+      // Settings > "Phone number to call"
+      $('statusText').textContent = 'Request sent \u2713 Call ' + n + ' so they review your request.';
+    });
+    if (new URLSearchParams(location.search).has('window')) setTimeout(() => window.close(), 6000);
   } else {
     showStatus('error', errorText(job.error), true);
     setBusy(false);

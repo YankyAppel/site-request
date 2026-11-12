@@ -20,11 +20,18 @@
   <div class="col left">
   <form id="form">
     <div class="pane" data-pane="details" data-title="Send to &amp; details">
+    <div class="two sendto">
     <section>
       <label for="to">Send requests to</label>
       <input id="to" type="email" placeholder="requests@example.com">
       <p class="hint">The email address of the company that approves your site requests. Nothing is sent until you add it.</p>
     </section>
+    <section>
+      <label for="callNumber">Phone number to call <span class="opt">(optional)</span></label>
+      <input id="callNumber" type="tel" autocomplete="off" placeholder="718-000-0000">
+      <p class="hint">If they only look at a request after you call, add their number here. After each request, you see "Call this number so they review your request."</p>
+    </section>
+    </div>
     <h2 class="group">Account details <span class="opt">(optional)</span></h2>
     <p class="hint">Filled-in details are added at the bottom of every request, so the request can be matched to your account. Empty ones are left out.</p>
     <div class="two">

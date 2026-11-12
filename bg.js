@@ -622,6 +622,10 @@ async function notifyJobResult(job) {
   const ok = job.state === 'sent';
   let msg = ok ? 'The email was sent from your Gmail.' : (JOB_ERRORS[job.error] || (String(job.error || '').startsWith('gmail_said:') ? 'Gmail said: ' + job.error.slice(11).trim() : 'Something went wrong.'));
   if (!ok) msg += ' Click to open the email.';
+  if (ok) {
+    const { callNumber } = await chrome.storage.local.get({ callNumber: '' });
+    if (String(callNumber || '').trim()) msg += ' Call ' + String(callNumber).trim() + ' so they review your request.';
+  }
   await chrome.notifications.create(JOB_NOTE + job.id, {
     type: 'basic',
     iconUrl: chrome.runtime.getURL('icons/icon128.png'),

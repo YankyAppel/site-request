@@ -352,6 +352,8 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
 .status.error .dot { background: #c9302c; }
 .status.error .txt { color: #c9302c; }
 .status .open { font: inherit; color: var(--sr-a, #1a7db6); background: none; border: 0; padding: 0; cursor: pointer; font-weight: 700; }
+.status .callline { display: block; flex-basis: 100%; margin-top: 4px; font-weight: 700; color: var(--sr-t, #333); }
+.status .call { color: var(--sr-a, #1a7db6); text-decoration: none; white-space: nowrap; }
 .tag { font-weight: 400; color: var(--sr-k, #9a9a9a); }
 .tag:before { content: ' \\00b7  '; }
 .tag.ok { color: #3c8d5a; }
@@ -612,8 +614,23 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
     $('openMail').hidden = !canOpen;
   }
 
+  // Settings > "Phone number to call": shown under "Request sent", so you call and they review it.
+  let callNumber = '';
+  function loadCall() {
+    try {
+      chrome.storage.local.get({ callNumber: '' }, r => { callNumber = String((r && r.callNumber) || '').trim(); if (jobId && $('status') && /sent/.test($('status').className)) renderSent(); });
+    } catch (e) { /* extension reloaded */ }
+  }
+  loadCall();
+  function callLine() {
+    if (!callNumber) return '';
+    const d = callNumber.replace(/[^\d+]/g, '');
+    const num = d.replace(/\D/g, '').length >= 3 ? '<a class="call" href="tel:' + esc(d) + '">' + esc(callNumber) + '</a>' : esc(callNumber);
+    return '<span class="callline">Call ' + num + ' so they review your request.</span>';
+  }
+
   function renderSent() {
-    showStatus('sent', '<b>Request sent</b> at ' + esc(fmtTime(sentAt)) + '.' + statusTag((info && info.last) || { status: 'pending' }), false);
+    showStatus('sent', '<b>Request sent</b> at ' + esc(fmtTime(sentAt)) + '.' + statusTag((info && info.last) || { status: 'pending' }) + callLine(), false);
   }
 
   async function saveTo() {
@@ -693,6 +710,7 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
   // History changes (the approval check) update the tag live.
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !shadow) return;
+    if (changes.callNumber) loadCall();
     if (changes.blockPanel || changes.blockPanelAuto || changes.reasons || changes.defaultReason || changes.to || changes.history) refresh(false);
   });
 

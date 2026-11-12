@@ -3,7 +3,7 @@ import { compareVersions } from '../shared/update.js';
 import { normalizeReasons, addReason, updateReason, deleteReason, moveReason, defaultReasonId, reasonSummary, LABEL_MAX, TEXT_MAX } from '../shared/reasons.js';
 
 const $ = id => document.getElementById(id);
-const FIELDS = ['to', 'name', 'phone', 'pin', 'notes', 'account', 'subject', 'body'];
+const FIELDS = ['to', 'callNumber', 'name', 'phone', 'pin', 'notes', 'account', 'subject', 'body'];
 
 
 // ---- 1.5.3: saved fields show as text, with Edit to change them ----
@@ -319,6 +319,7 @@ $('form').addEventListener('submit', async e => {
   $('to').setCustomValidity('');
   await chrome.storage.local.set({
     to,
+    callNumber: $('callNumber').value.trim(),
     name: $('name').value.trim(),
     phone: $('phone').value.trim(),
     pin: $('pin').value.trim(),
