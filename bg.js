@@ -152,7 +152,7 @@ async function sendMail(s, mail, meta) {
   const tab = await chrome.tabs.create({ url: link, active: false });
   const job = Object.assign({
     id: crypto.randomUUID(), tabId: tab.id, to: mail.to, subject: mail.subject,
-    composeUrl: link, state: 'sending', error: '', started: Date.now()
+    composeUrl: link, html: mail.html || '', state: 'sending', error: '', started: Date.now()
   }, meta);
   await putJob(job);
   try {
@@ -212,7 +212,16 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         if (!sender.tab || !/^https:\/\/mail\.google\.com\//.test(sender.url || '')) return { auto: false };
         await opening;
         const job = await findJobByTab(sender.tab.id);
-        return job ? { auto: true, id: job.id, to: job.to } : { auto: false };
+        return job ? { auto: true, id: job.id, to: job.to, html: job.html || '' } : { auto: false };
+      }
+      case 'gmail_html': {
+        // Whether the formatted version went in (kept on the job, for the tests and for "why plain text").
+        if (!sender.tab) return { ok: false };
+        const job = await findJobByTab(sender.tab.id);
+        if (!job || job.id !== msg.id) return { ok: false };
+        job.htmlIn = !!msg.ok;
+        await putJob(job);
+        return { ok: true };
       }
       case 'gmail_result': {
         if (!sender.tab) return { ok: false };
@@ -689,12 +698,23 @@ const MENU_SITE = 'sr-site';
 const MENU_PAGE = 'sr-page';
 const MENU_WHY = 'sr-why';
 
+// 1.5.5: one setup at a time, and an item that is already there is fine (this was the
+// "Cannot create item with duplicate id" line on the extensions page after a Reload).
+let menusBusy = Promise.resolve();
 function setupMenus() {
-  chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({ id: MENU_SITE, title: 'Request this site', contexts: ['page', 'link'] });
-    chrome.contextMenus.create({ id: MENU_PAGE, title: 'Request just this page', contexts: ['page', 'link'] });
-    chrome.contextMenus.create({ id: MENU_WHY, title: 'Request with reason\u2026', contexts: ['page', 'link'] });
-  });
+  menusBusy = menusBusy.then(() => new Promise(done => {
+    chrome.contextMenus.removeAll(() => {
+      void chrome.runtime.lastError;
+      const items = [
+        { id: MENU_SITE, title: 'Request this site', contexts: ['page', 'link'] },
+        { id: MENU_PAGE, title: 'Request just this page', contexts: ['page', 'link'] },
+        { id: MENU_WHY, title: 'Request with reason\u2026', contexts: ['page', 'link'] }
+      ];
+      let left = items.length;
+      for (const it of items) chrome.contextMenus.create(it, () => { void chrome.runtime.lastError; if (--left === 0) done(); });
+    });
+  })).catch(() => {});
+  return menusBusy;
 }
 
 // Opens the popup with the site filled in, so a reason can be picked. If Chrome will not open

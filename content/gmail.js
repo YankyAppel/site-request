@@ -62,6 +62,41 @@
     target.dispatchEvent(new KeyboardEvent('keyup', opts));
   }
 
+  // 1.5.5: put the formatted version of the email into the compose box, keeping your Gmail signature.
+  // Returns true when it is in. On any problem nothing is changed and the plain text is sent.
+  function findBody() {
+    const boxes = Array.from(document.querySelectorAll('div[contenteditable="true"][role="textbox"], div[contenteditable="true"].editable, div[contenteditable="true"][g_editable="true"]')).filter(visible);
+    return boxes.find(b => /message body|\u05d2\u05d5\u05e3 \u05d4\u05d4\u05d5\u05d3\u05e2\u05d4/i.test(b.getAttribute('aria-label') || '')) || boxes[0] || null;
+  }
+  function putHtml(html) {
+    try {
+      if (!html) return false;
+      const box = findBody();
+      if (!box) return false;
+      const before = box.innerHTML;
+      const sig = box.querySelector('.gmail_signature');
+      const sigWrap = sig ? (sig.closest('[data-smartmail="gmail_signature"]') || sig.closest('div.gmail_signature_prefix') || sig) : null;
+      const keep = sigWrap ? sigWrap.cloneNode(true) : null;
+      const tpl = document.createElement('template');
+      tpl.innerHTML = html;
+      // Only the email itself goes in: no scripts or event handlers.
+      tpl.content.querySelectorAll('script, iframe, object, embed').forEach(n => n.remove());
+      // Your Gmail signature goes after "Thank you", above the "Sent with" line.
+      if (keep) {
+        const foot = tpl.content.querySelector('[data-sr-footer]');
+        const sigBox = document.createElement('div');
+        sigBox.style.margin = '0 0 18px';
+        sigBox.appendChild(keep);
+        if (foot) foot.parentNode.insertBefore(sigBox, foot); else tpl.content.appendChild(sigBox);
+      }
+      box.innerHTML = '';
+      box.appendChild(tpl.content);
+      box.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      if (!/Sent with Site Request/.test(box.textContent || '')) { box.innerHTML = before; box.dispatchEvent(new InputEvent('input', { bubbles: true })); return false; }
+      return true;
+    } catch (e) { return false; }
+  }
+
   function report(id, state, error) {
     try { chrome.runtime.sendMessage({ type: 'gmail_result', id, state, error: error || '' }); } catch (e) { /* extension reloaded */ }
   }
@@ -70,6 +105,11 @@
     const btn = await waitFor(findSend, 45000);
     if (!btn) return report(job.id, 'error', 'no_send_button');
     await sleep(1500);
+    if (job.html) {
+      const ok = putHtml(job.html);
+      try { chrome.runtime.sendMessage({ type: 'gmail_html', id: job.id, ok }); } catch (e) { /* extension reloaded */ }
+      await sleep(ok ? 300 : 0);
+    }
     press(btn);
 
     let result = await waitFor(() => (sentSignal() ? 'sent' : errorDialog() ? 'dialog' : null), 6000);

@@ -72,6 +72,13 @@
       <textarea id="body" rows="11"></textarea>
       <p class="hint">You can use {url} for the full address, {domain} for the site name, {target} for what you ask for (the whole site as *.example.com, or just the page), {ask} for the matching request sentence, {page} for the page you were on (whole-site requests only), {date} for the date and time, {reason} for the reason shown on the block page, and {why} for the reason you pick and your details. A line with {reason}, {page} or {why} is left out when it has no value.</p>
     </section>
+    <div class="html-mail">
+      <label class="switch-row" for="htmlMail">
+        <span>Formatted email</span>
+        <input type="checkbox" id="htmlMail" class="switch">
+      </label>
+      <p class="hint">The email is sent neatly laid out, in the extension's colors, with your account details in their own part. Turn off to send plain text.</p>
+    </div>
     </div>
     <div class="actions">
       <button class="btn" type="submit">Save</button>

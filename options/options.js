@@ -83,6 +83,7 @@ async function load() {
   $('body').value = bodyTemplate(s);
   $('checkApproved').checked = !!s.checkApproved;
   $('remind').checked = !!s.remind;
+  $('htmlMail').checked = s.htmlMail !== false;
   renderBlockPanel(s.blockPanel !== false, s.blockPanelAuto !== false);
   showViews(!!String(s.to || '').trim());
 }
@@ -105,6 +106,10 @@ $('blockPanelAuto').addEventListener('change', async () => {
 
 $('remind').addEventListener('change', async () => {
   await chrome.storage.local.set({ remind: $('remind').checked });
+});
+
+$('htmlMail').addEventListener('change', async () => {
+  await chrome.storage.local.set({ htmlMail: $('htmlMail').checked });
 });
 
 $('checkApproved').addEventListener('change', async () => {

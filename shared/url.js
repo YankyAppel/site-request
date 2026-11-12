@@ -1,5 +1,6 @@
 // URL helpers shared by the popup, the background worker and the tests.
 import { reasonBlock } from './reasons.js';
+import { htmlRequest, htmlFromText } from './html.js';
 
 const BLOCK_HOST = /^filter[\w-]*\.techloq\.[a-z.]+$/i;
 
@@ -186,6 +187,7 @@ export const DEFAULTS = {
   checkApproved: true,
   remind: true,
   callNumber: '',
+  htmlMail: true,
   defaultReason: '',
   blockPanel: true,
   blockPanelAuto: true,
@@ -273,6 +275,10 @@ export function buildEmail(s, url, now, reason, scope, mine) {
     to: String(s.to || '').trim(),
     subject: fillTemplate(s.subject || DEFAULTS.subject, vars),
     body: fillBody(bodyTemplate(s), vars, scope) + detailsBlock(s),
+    // 1.5.5: the formatted version. Your own message from Settings keeps its words (as paragraphs).
+    html: s.htmlMail === false ? '' : (bodyTemplate(s) === DEFAULTS.body
+      ? htmlRequest({ domain: vars.domain, target: vars.target, url, scope, why: mine }, s)
+      : htmlFromText(fillBody(bodyTemplate(s), vars, scope), s)),
     domain: vars.domain,
     reason: vars.reason,
     scope,
@@ -286,7 +292,7 @@ export function buildPartsEmail(s, pageUrl, items, now, mine) {
   const why = reasonBlock(mine);
   const list = items.map(i => String(i).trim()).filter(Boolean);
   const n = list.length;
-  return {
+  const out = {
     to: String(s.to || '').trim(),
     subject: 'Site request: ' + n + (n === 1 ? ' address' : ' addresses') + ' used by ' + domain,
     body: 'Hello,\n\nThe site ' + domain + ' opens, but parts of it do not load because ' +
@@ -294,6 +300,8 @@ export function buildPartsEmail(s, pageUrl, items, now, mine) {
       list.join('\n') + (why ? '\n\n' + why : '') + '\n\nPage: ' + pageUrl + '\nRequested: ' + formatDate(now || new Date()) + '\n\nThank you very much.' + detailsBlock(s),
     domain
   };
+  if (s.htmlMail !== false) out.html = htmlFromText(out.body, s);
+  return out;
 }
 
 // The short follow-up for a request that is still not open.
@@ -307,11 +315,13 @@ export function buildReminderEmail(s, entry, now) {
   }
   const what = entry.kind === 'parts' && Array.isArray(entry.items) ? entry.items.join('\n') : target;
   const why = reasonBlock(entry.reason);
-  return {
+  const out = {
     to: String(entry.to || s.to || '').trim(),
     subject: 'Reminder: ' + subject,
     body: 'Hello,\n\nThis is a short reminder about my request from ' + formatDate(new Date(entry.at || now)) +
       '. It is still blocked:\n\n' + what + (why ? '\n\n' + why : '') + '\n\nCould you please take a look?\n\nThank you very much.' + detailsBlock(s)
   };
+  if (s.htmlMail !== false) out.html = htmlFromText(out.body, s);
+  return out;
 }
 
