@@ -20,11 +20,27 @@
   <div class="col left">
   <form id="form">
     <div class="pane" data-pane="details" data-title="Send to &amp; details">
+    <div class="sendmode">
+      <span class="mlabel" id="modeLabel">Send requests by</span>
+      <div class="seg" role="radiogroup" aria-labelledby="modeLabel">
+        <button type="button" role="radio" id="modeEmail" data-mode="email">Email</button><button type="button" role="radio" id="modeLink" data-mode="link">Link</button>
+      </div>
+      <p class="hint" id="modeHint"></p>
+    </div>
     <div class="two sendto">
-    <section>
+    <section id="toSec">
       <label for="to">Send requests to</label>
       <input id="to" type="email" placeholder="requests@example.com">
       <p class="hint">The email address of the company that approves your site requests. Nothing is sent until you add it.</p>
+    </section>
+    <section id="keySec" hidden>
+      <label for="deskKey">Your key</label>
+      <div class="keyrow">
+        <input id="deskKey" type="text" placeholder="SR-XXXX-XXXX-XXXX-XXXX" spellcheck="false" autocomplete="off" autocapitalize="characters">
+        <button class="btn light small" type="button" id="checkKey">Check</button>
+      </div>
+      <p class="kmsg" id="keyMsg" role="status"></p>
+      <p class="hint">The personal key your network company gave you. Each request is locked on this computer before it is sent, so only their desk can open it. No key? Send by email.</p>
     </section>
     <section>
       <label for="callNumber">Phone number to call <span class="opt">(optional)</span></label>
@@ -58,6 +74,7 @@
     </div>
     <div class="pane" data-pane="email" data-title="Email">
     <h2 class="group">Email</h2>
+    <p class="hint" id="emailOff" hidden>Link mode is on, so requests are not sent by email. These are used only in Email mode.</p>
     <section>
       <label for="account">Gmail account <span class="opt">(optional)</span></label>
       <input id="account" type="text" placeholder="0">

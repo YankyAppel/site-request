@@ -137,3 +137,19 @@ input.switch:checked { background: #1a7db6; }
 .history li .st.ok, .saved, .rmsg.ok { color: #3c8d5a; }
 .col.left .actions { background: #f6f6f6; border-top-color: #e2e2e2; }
 .history li, .reasons li { border-bottom-color: #e8e8e8; }
+
+/* 1.6.0: Email / Link */
+.sendmode { margin-top: 22px; }
+.sendmode .mlabel { display: block; font-size: 15px; font-weight: 700; margin-bottom: 8px; color: #333; }
+.seg { display: inline-flex; border: 1px solid #1a7db6; border-radius: 4px; overflow: hidden; }
+.seg button { font: inherit; font-size: 14px; font-weight: 700; color: #1a7db6; background: #ecf0f2; border: 0; padding: 7px 22px; cursor: pointer; }
+.seg button + button { border-left: 1px solid #1a7db6; }
+.seg button.on { background: #1a7db6; color: #fff; cursor: default; }
+.seg button:not(.on):hover { opacity: .85; }
+.keyrow { display: flex; align-items: center; gap: 10px; }
+.keyrow input { flex: 1; min-width: 0; letter-spacing: .04em; }
+.kmsg { font-size: 13px; color: #8b8b8b; margin: 8px 0 0; overflow-wrap: anywhere; }
+.kmsg:empty { display: none; }
+.kmsg.ok { color: #3c8d5a; font-weight: 700; }
+.kmsg.bad { color: #a42323; }
+#emailOff { margin: 6px 0 0; }

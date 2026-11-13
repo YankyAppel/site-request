@@ -1,6 +1,6 @@
 # Site Request
 
-A small Chrome extension to request access to a blocked site by email, in one click.
+A small Chrome extension to request access to a blocked site in one click, by email or straight to your network's request desk.
 
 When you land on a block page, open the extension and click **Request this site** (or use the **Request this site** box on the block page itself). It reads the blocked address (and the reason shown on the block page), writes the request email, and sends it from the Gmail account you are already signed in to in Chrome. You can also request the site of any open tab, type an address by hand, or right-click any link or page.
 
@@ -14,6 +14,19 @@ When you land on a block page, open the extension and click **Request this site*
 No address is built in. Until you add one, nothing is sent: the popup shows a **Send requests to (email)** field with a **Save** button, and a right-click request shows a notification asking you to set the address in the popup first.
 
 Be signed in to Gmail in the same Chrome profile. Each request is sent from that Gmail account.
+
+## Email or Link
+
+In Settings, under **Send to & details**, choose how requests go out:
+
+- **Email** (the default): the request is sent as an email from your Gmail, as before.
+- **Link**: the request goes straight to your network company's request desk. No email and no Gmail tab. Link is only for people the desk gave a personal key.
+
+To use Link, choose **Link** and paste your key in **Your key** (it looks like `SR-XXXX-XXXX-XXXX-XXXX`; small letters and missing dashes are fine). It is checked right away: **Key accepted** turns Link on. If it says **This key isn't valid**, Link stays off and requests keep going by email. No key? Use email.
+
+If the desk turns your key off, the next request is not sent: Site Request tells you the key no longer works, switches back to Email, and keeps what you typed in the box, so you can send it by email.
+
+In Link mode each request is locked on your computer with the desk's public key before it is sent, so only the desk's own computers can open it. The desk sees who sent it from your key; your name, phone, account PIN and notes from Settings go along too. It is still listed in your Sent requests, the block page still says **Request sent** with your call-in number, and the approval check works the same way. A reminder for a request sent by link goes to the desk too.
 
 ## Updates
 

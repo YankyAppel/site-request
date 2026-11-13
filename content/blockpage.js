@@ -281,7 +281,15 @@
     no_send_button: 'Gmail opened, but the Send button was not found.',
     no_confirmation: 'Could not confirm that Gmail sent the email.',
     timeout: 'Gmail took too long. The email may not have been sent.',
-    tab_closed: 'The email tab was closed before it was sent.'
+    tab_closed: 'The email tab was closed before it was sent.',
+    bad_desk: 'The request desk could not be used.',
+    desk_unreachable: 'The request desk could not be reached. Check your connection and try again.',
+    desk_not_ready: 'The request desk is not set up yet.',
+    desk_bad_key: 'The request desk sent a key that does not work.',
+    desk_busy: 'The request desk got too many requests. Please try again in a few minutes.',
+    desk_refused: 'The request desk did not take the request. Please try again.',
+    desk_no_key: 'Link needs your personal key. Add it in Settings, or send by email.',
+    desk_key_off: 'Your key no longer works, so this was not sent. Please send your request by email.'
   };
   const DETAILS_MAX = 500;
   const MARK = '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#1a7db6"/><path fill="#fff" d="M5.6 6.1c-.2-.6.4-1.1 1-.8l12 5.9c.5.3.5 1 0 1.3l-12 5.9c-.6.3-1.2-.2-1-.8L7.4 12 5.6 6.1zm3.2 6.6-1.3 3.8 8.6-4.3-8.6-4.4 1.3 3.9H13v1H8.8z"/></svg>';
@@ -700,7 +708,7 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
         $('send').disabled = false;
         const e = String(r.error || '');
         const t = MESSAGES[e] || (e.startsWith('gmail_said:') ? 'Gmail said: ' + e.slice(11).trim() : 'Something went wrong.');
-        showStatus('error', esc(t), e !== 'tab_closed');
+        showStatus('error', esc(t), e !== 'tab_closed' && !/^(desk_|bad_desk|not_a_desk)/.test(e));
         return;
       }
       if (n < 240) poll(n + 1);
@@ -737,7 +745,7 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !shadow) return;
     if (changes.callNumber) loadCall();
-    if (changes.blockPanel || changes.blockPanelAuto || changes.reasons || changes.defaultReason || changes.to || changes.history) refresh(false);
+    if (changes.blockPanel || changes.blockPanelAuto || changes.reasons || changes.defaultReason || changes.to || changes.sendMode || changes.deskKey || changes.keyOk || changes.history) refresh(false);
   });
 
   // ---------- Life cycle ----------
