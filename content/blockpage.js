@@ -354,6 +354,7 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
 .status .open { font: inherit; color: var(--sr-a, #1a7db6); background: none; border: 0; padding: 0; cursor: pointer; font-weight: 700; }
 .status .callline { display: block; flex-basis: 100%; margin-top: 4px; font-weight: 700; color: var(--sr-t, #333); }
 .status .call { color: var(--sr-a, #1a7db6); text-decoration: none; white-space: nowrap; }
+.status .subs { display: block; flex-basis: 100%; margin-top: 6px; max-height: 110px; overflow: auto; font-size: .85em; color: var(--sr-k, #9a9a9a); line-height: 1.45; }
 .tag { font-weight: 400; color: var(--sr-k, #9a9a9a); }
 .tag:before { content: ' \\00b7  '; }
 .tag.ok { color: #3c8d5a; }
@@ -480,7 +481,7 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
     try {
       const h = new URL(url).hostname.toLowerCase();
       const p = h.split('.');
-      return '*.' + p.slice(-2).join('.');
+      return p.slice(-2).join('.');
     } catch (e) { return url; }
   }
   function renderScope() {
@@ -489,7 +490,7 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
     if (url) {
       $('scopeNote').textContent = scope() === 'page'
         ? 'Only this address, not the rest of the site.'
-        : 'Asks for ' + siteTarget(url) + ' (every page of the site).';
+        : 'Asks for ' + siteTarget(url) + ' and its known subdomains (every page of the site).';
     }
   }
   function renderChips() {
@@ -706,6 +707,31 @@ textarea { resize: vertical; min-height: 38px; height: 38px; max-height: 140px; 
       else { busy = false; renderMode(); }
     }, n ? 600 : 300);
   }
+
+  // The worker reports the whole-site subdomain lookup while the request builds:
+  // the found addresses tick into the animation one by one, then it says it's sending.
+  let subTimer = 0;
+  chrome.runtime.onMessage.addListener(msg => {
+    if (!busy) return;
+    if (msg && msg.type === 'allow_progress') {
+      showStatus('sending', 'Finding the site\u2019s addresses\u2026<span class="subs" id="subs"></span>', false);
+    } else if (msg && msg.type === 'allow_list' && Array.isArray(msg.items)) {
+      const items = msg.items.map(String);
+      showStatus('sending', 'Finding the site\u2019s addresses\u2026<span class="subs" id="subs"></span>', false);
+      const box = $('subs');
+      if (!box || !items.length) { showStatus('sending', 'Sending your request\u2026', false); return; }
+      let i = 0;
+      clearInterval(subTimer);
+      subTimer = setInterval(() => {
+        box.innerHTML += (i ? '<br>' : '') + esc(items[i]);
+        box.scrollTop = box.scrollHeight;
+        if (++i >= items.length) {
+          clearInterval(subTimer);
+          $('statusText').firstChild.textContent = 'Sending your request\u2026';
+        }
+      }, 80);
+    }
+  });
 
   // History changes (the approval check) update the tag live.
   chrome.storage.onChanged.addListener((changes, area) => {

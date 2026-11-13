@@ -29,7 +29,7 @@ Chrome does not let an extension loaded from a folder replace its own files, so 
 
 Before you send, the popup asks **Whole site** (the default) or **Just this page**:
 
-- **Whole site** asks for the whole domain as a wildcard, for example `*.example.com`, with the page you were on as an example.
+- **Whole site** asks for the whole domain. Filters like Techloq have no wildcard entry, so the email lists the addresses to allow, one per line: the address you were on, the bare domain, its `www.` twin, and the subdomains the public certificate logs (crt.sh) know. While the list is looked up, the block-page box shows a progress line and then the addresses found. If the site has a subdomain the lookup missed, a request from a page on that subdomain names it too.
 - **Just this page** asks for that exact address only, and the email says so.
 
 ## Reasons
@@ -75,7 +75,7 @@ To pick a reason first, choose **Request with reason…**. The popup opens with 
 
 Sometimes a site opens but looks broken: its pictures, videos, styles or scripts come from other addresses that are blocked. The extension notices these while the page loads (a part that is sent to the block page, a part whose connection is cut or whose secure connection fails, or a block page sent in place of a part) and shows the count on its icon in amber.
 
-Open the popup to see **This page has N blocked parts**, with each address and a checkbox. Several addresses under one name are grouped as a wildcard (for example `*.cdn.example.com`). Common ad and tracker addresses are listed but left unticked. **Request all** sends one email with every ticked address.
+Open the popup to see **This page has N blocked parts**, with each address and a checkbox. Every address is listed on its own, ready to enter into a filter that allows one address at a time (Techloq has no wildcard entries). Common ad and tracker addresses are listed but left unticked. **Request all** sends one email with every ticked address.
 
 While an update is waiting, the icon shows the red **NEW** instead; the popup still shows both. Icon order: red **NEW**, then the amber count, then the blue **✓** for an already requested site.
 
@@ -106,7 +106,7 @@ All optional and stored only in your browser:
 - **Offer a reminder after 2 days**: the reminder above.
 - **Show Request button on block pages** and **Only when the page has no request option of its own**: the box on the block page above.
 - **Reasons**: your reason buttons, and the **Default reason** used by the right-click menu and picked first in the popup.
-- **Subject and message**: your own wording. Placeholders: `{url}` full address, `{domain}` site name, `{target}` what is asked for (`*.example.com` for the whole site, or the exact page), `{ask}` the matching request sentence, `{page}` the page you were on (whole-site requests only), `{date}` date and time, `{reason}` the reason shown on the block page, `{why}` the reason you pick and your details. A line with `{reason}`, `{page}` or `{why}` is left out when it has no value. A message of your own without `{why}` gets your reason added at the end.
+- **Subject and message**: your own wording. Placeholders: `{url}` full address, `{domain}` site name, `{target}` what is asked for (the whole site — the domain and known subdomains, one address per line — or the exact page), `{ask}` the matching request sentence, `{page}` the page you were on (whole-site requests only), `{date}` date and time, `{reason}` the reason shown on the block page, `{why}` the reason you pick and your details. A line with `{reason}`, `{page}` or `{why}` is left out when it has no value. A message of your own without `{why}` gets your reason added at the end.
 
 The reason shown on the block page (for example its category) appears in the default message as **Blocked as:**, so it does not mix with your own **Reason:** line.
 

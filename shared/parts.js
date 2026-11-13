@@ -105,37 +105,12 @@ export function isAdHost(host) {
   return AD_HOSTS.some(a => h === a || h.endsWith('.' + a));
 }
 
-// Hosts -> request lines. Two or more hosts under the same base become one wildcard
-// ("a.cdn.example.com" + "b.cdn.example.com" -> "*.cdn.example.com"); the longest shared
-// base wins, and a base is never shorter than the site's own domain ("*.com" never happens).
+// Hosts -> request lines, one entry per host: Techloq allows single addresses only,
+// so siblings under one base stay separate lines instead of a "*.base" wildcard.
 // Returns [{ label, hosts, base, wildcard, ad }], sorted: not-ads first, then by label.
 export function groupHosts(hostList) {
   const hosts = [...new Set((hostList || []).map(h => String(h || '').toLowerCase().replace(/\.$/, '')).filter(Boolean))].sort();
-  const bases = new Map();  // base -> hosts below it (or equal to it)
-  for (const h of hosts) {
-    if (/^[\d.]+$/.test(h) || h.includes(':')) continue;
-    const site = baseDomain(h);
-    const labels = h.split('.');
-    const min = site.split('.').length;
-    for (let n = labels.length - 1; n >= min; n--) {
-      const b = labels.slice(-n).join('.');
-      if (!bases.has(b)) bases.set(b, []);
-      bases.get(b).push(h);
-    }
-  }
-  for (const h of hosts) if (bases.has(h)) bases.get(h).push(h);  // "example.com" itself joins "*.example.com"
-  const order = [...bases.keys()].sort((a, b) => b.split('.').length - a.split('.').length || a.localeCompare(b));
-  const used = new Set();
-  const out = [];
-  for (const b of order) {
-    const free = [...new Set(bases.get(b))].filter(h => !used.has(h));
-    if (free.length < 2) continue;
-    free.forEach(h => used.add(h));
-    out.push({ label: (free.includes(b) ? b + ', *.' : '*.') + b, hosts: free.sort(), base: b, wildcard: true });
-  }
-  for (const h of hosts) {
-    if (!used.has(h)) out.push({ label: h, hosts: [h], base: h, wildcard: false });
-  }
+  const out = hosts.map(h => ({ label: h, hosts: [h], base: h, wildcard: false }));
   for (const g of out) g.ad = g.hosts.every(isAdHost);
   return out.sort((a, b) => (a.ad - b.ad) || a.label.replace(/^\*\./, '').localeCompare(b.label.replace(/^\*\./, '')));
 }

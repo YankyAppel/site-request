@@ -1,6 +1,6 @@
 import {
   DEFAULTS, isBlockPage, composeUrl, isEmail, cleanCandidate, buildEmail, buildPartsEmail, buildReminderEmail, extractBlockedUrl,
-  cleanReason, scopeTarget
+  cleanReason, scopeTarget, baseDomain, fetchSubdomains, mergedAllowList
 } from './shared/url.js';
 import { checkLatest, compareVersions } from './shared/update.js';
 import {
@@ -93,17 +93,25 @@ function serial(p) {
   return p;
 }
 
-function startRequest(rawUrl, reason, fromBlockPage, scope, via, mine) {
-  return serial(doStartRequest(rawUrl, reason, fromBlockPage, scope, via, mine));
+function startRequest(rawUrl, reason, fromBlockPage, scope, via, mine, tabId) {
+  return serial(doStartRequest(rawUrl, reason, fromBlockPage, scope, via, mine, tabId));
 }
 
-async function doStartRequest(rawUrl, reason, fromBlockPage, scope, via, mine) {
+async function doStartRequest(rawUrl, reason, fromBlockPage, scope, via, mine, tabId) {
   const url = cleanCandidate(rawUrl);
   if (!url) return { ok: false, error: 'bad_url' };
   const s = await getSettings();
   if (!isEmail(s.to)) return { ok: false, error: 'no_address' };
   const choice = await getChoice(mine);
-  const mail = buildEmail(s, url, new Date(), reason, scope, choice);
+  // Whole-site asks list every subdomain the certificate logs know (Techloq has no wildcard entries).
+  // The block-page panel shows the lookup live: "finding addresses", then the list that goes in the email.
+  let allow = null;
+  if (scope !== 'page') {
+    if (tabId) chrome.tabs.sendMessage(tabId, { type: 'allow_progress' }).catch(() => {});
+    allow = await fetchSubdomains(baseDomain(hostOf(url))).catch(() => []);
+    if (tabId) chrome.tabs.sendMessage(tabId, { type: 'allow_list', items: mergedAllowList(url, allow) }).catch(() => {});
+  }
+  const mail = buildEmail(s, url, new Date(), reason, scope, choice, allow);
   const { history } = await chrome.storage.local.get({ history: [] });
   return sendMail(s, mail, {
     kind: 'site', url, domain: mail.domain, fromBlockPage: !!fromBlockPage,
@@ -172,6 +180,8 @@ async function openCompose(id) {
     await chrome.tabs.update(tab.id, { active: true });
     await chrome.windows.update(tab.windowId, { focused: true });
   } catch (e) {
+    // The compose tab is gone (closed or reloaded) — open a fresh one.
+    console.warn('site-request: could not focus the compose tab, opening a new one:', e);
     await chrome.tabs.create({ url: job.composeUrl, active: true });
   }
   return { ok: true };
@@ -181,7 +191,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   (async () => {
     switch (msg && msg.type) {
       case 'request':
-        return startRequest(msg.url, msg.reason, msg.fromBlockPage, msg.scope, msg.via === 'panel' && sender.tab ? 'panel' : 'popup', msg.mine);
+        return startRequest(msg.url, msg.reason, msg.fromBlockPage, msg.scope, msg.via === 'panel' && sender.tab ? 'panel' : 'popup', msg.mine, sender.tab && sender.tab.id);
       case 'panel_info':
         return panelInfo(msg, sender);
       case 'job_status':
@@ -427,6 +437,8 @@ async function readBody(res) {
 }
 
 async function probe(url) {
+  try { if (!/^https?:$/.test(new URL(url).protocol)) return { url, error: 'bad_scheme' }; }
+  catch (e) { return { url, error: 'bad_url' }; }
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), CHECK_TIMEOUT_MS);
   try {
@@ -688,7 +700,10 @@ async function doReminderCheck() {
         requireInteraction: true,
         priority: 1
       });
-    } catch (e) { /* notifications turned off */ }
+    } catch (e) {
+      // Notifications may be off for this profile — the request itself is fine.
+      console.warn('site-request: could not show the reminder notification:', e);
+    }
   }
   return { ok: true, offered: due.length };
 }
@@ -901,13 +916,16 @@ async function bodyCheck(d) {
   const timer = setTimeout(() => ctl.abort(), 8000);
   let probeResult;
   try {
+    if (!/^https?:$/.test(new URL(d.url).protocol)) { probeResult = { error: 'bad_scheme' }; return; }
     const res = await fetch(d.url, { credentials: 'omit', cache: 'no-store', redirect: 'follow', signal: ctl.signal });
     let body = '';
     if (/text\/html|xml|text\/plain/i.test(res.headers.get('content-type') || '')) body = (await readBody(res)).slice(0, 65536);
     else if (res.body) res.body.cancel().catch(() => {});
     probeResult = { finalUrl: res.url, body };
   } catch (e) {
+    // A blocked or offline address is a normal result here, not a code failure.
     probeResult = { error: String(e && e.message || e) };
+    console.warn('site-request: body check failed for ' + d.url + ':', e);
   } finally {
     clearTimeout(timer);
   }
