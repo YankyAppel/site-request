@@ -92,15 +92,16 @@ export async function lockForDesk(pubJwk, deskId, obj) {
   return { v: 1, e: b64(ephRaw), iv: b64(iv), ct: b64(ct) };
 }
 
-async function call(url, opts, ms) {
-  // Only the built-in desk host (or this computer itself on a test build) is ever fetched.
-  let u;
-  try { u = new URL(url); } catch (e) { return { status: 0, data: { error: 'bad_scheme' } }; }
-  const local = /^(localhost|127\.0\.0\.1)$/.test(u.hostname);
-  const allowed = u.origin === new URL(DESK_URL).origin || (local && u.protocol === 'http:');
-  if (!allowed || (u.protocol !== 'https:' && !(local && u.protocol === 'http:'))) {
-    return { status: 0, data: { error: 'bad_scheme' } };
-  }
+// The desk API paths this file may call. Nothing else is ever fetched.
+const API_PATHS = ['/api/key', '/api/check', '/api/send'];
+
+async function call(base, path, opts, ms) {
+  // The fetched address is rebuilt here from a deskBase()-validated base and a
+  // fixed API path: no caller-supplied URL ever reaches fetch().
+  if (!API_PATHS.includes(path)) return { status: 0, data: { error: 'bad_path' } };
+  const b = deskBase(base);
+  if (!b) return { status: 0, data: { error: 'bad_desk' } };
+  const url = new URL(path, b).href;
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms || 15000);
   try {
@@ -122,7 +123,7 @@ export async function sendToDesk(deskUrl, key, payload, fetchKey) {
   if (!k0) return { ok: false, error: 'desk_no_key' };
   let k;
   try {
-    k = fetchKey ? await fetchKey(base) : await call(base + '/api/key', { method: 'GET' });
+    k = fetchKey ? await fetchKey(base) : await call(base, '/api/key', { method: 'GET' });
   } catch (e) {
     return { ok: false, error: 'desk_unreachable' };
   }
@@ -136,7 +137,7 @@ export async function sendToDesk(deskUrl, key, payload, fetchKey) {
   }
   let r;
   try {
-    r = await call(base + '/api/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deskId: k.data.deskId, key: k0, env }) });
+    r = await call(base, '/api/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deskId: k.data.deskId, key: k0, env }) });
   } catch (e) {
     return { ok: false, error: 'desk_unreachable' };
   }
@@ -154,7 +155,7 @@ export async function checkKey(deskUrl, key) {
   const k = normKey(key);
   if (!k) return { ok: true, valid: false, format: false };
   try {
-    const r = await call(base + '/api/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: k }) });
+    const r = await call(base, '/api/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: k }) });
     if (r.status === 429) return { ok: false, error: 'desk_busy' };
     if (r.status !== 200 || !r.data || !r.data.ok) return { ok: false, error: r.status === 409 ? 'desk_not_ready' : 'desk_unreachable' };
     return { ok: true, valid: !!r.data.valid, off: !!r.data.off };
