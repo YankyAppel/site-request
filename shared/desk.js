@@ -93,11 +93,14 @@ export async function lockForDesk(pubJwk, deskId, obj) {
 }
 
 async function call(url, opts, ms) {
-  // Only the allow-listed schemes deskBase() produces are fetched.
+  // Only the built-in desk host (or this computer itself on a test build) is ever fetched.
   let u;
   try { u = new URL(url); } catch (e) { return { status: 0, data: { error: 'bad_scheme' } }; }
   const local = /^(localhost|127\.0\.0\.1)$/.test(u.hostname);
-  if (u.protocol !== 'https:' && !(local && u.protocol === 'http:')) return { status: 0, data: { error: 'bad_scheme' } };
+  const allowed = u.origin === new URL(DESK_URL).origin || (local && u.protocol === 'http:');
+  if (!allowed || (u.protocol !== 'https:' && !(local && u.protocol === 'http:'))) {
+    return { status: 0, data: { error: 'bad_scheme' } };
+  }
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms || 15000);
   try {
