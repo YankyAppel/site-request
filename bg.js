@@ -11,6 +11,7 @@ import { blockSignal, needsBodyCheck, bodySignal, newRecord, addSignal, summary,
 import { normalizeReasons, chosenReason, defaultReasonId, reasonSummary } from './shared/reasons.js';
 import { requestedInfo, matchRequests, countLine, metaLine, fmtWhen, ordinal, badgeFor } from './shared/requested.js';
 import { dueReminders, reminderId, keyFromReminderId, waitingLabel, REMIND_EVERY_MIN } from './shared/reminder.js';
+import { DESK_URL, DEST_LABEL, isLinkMode, deskBase, normKey, hasDestination, destLabel, sendToDesk, checkKey as checkDeskKey, deskPayload } from './shared/desk.js';
 
 const JOB_TIMEOUT_MIN = 1.5;
 const HISTORY_MAX = 25;
@@ -51,6 +52,7 @@ async function addHistory(job) {
     fromBlockPage: !!job.fromBlockPage, status: 'pending',
     kind: job.kind, scope: job.scope, subject: job.subject, target: job.target
   };
+  if (job.link) entry.via = 'link';
   if (job.reason) entry.reason = job.reason;
   if (job.nth > 1) entry.nth = job.nth;
   if (job.kind === 'parts') {
@@ -77,7 +79,7 @@ async function finish(job, state, error) {
     else await addHistory(job);
   }
   await putJob(job);
-  if (state === 'sent') {
+  if (state === 'sent' && job.tabId != null) {
     setTimeout(() => { chrome.tabs.remove(job.tabId).catch(() => {}); }, 1500);
   }
   // Requests sent from the right-click menu or a notification have no popup to show the result.
@@ -101,10 +103,10 @@ async function doStartRequest(rawUrl, reason, fromBlockPage, scope, via, mine, t
   const url = cleanCandidate(rawUrl);
   if (!url) return { ok: false, error: 'bad_url' };
   const s = await getSettings();
-  if (!isEmail(s.to)) return { ok: false, error: 'no_address' };
+  if (!hasDestination(s, isEmail)) return { ok: false, error: 'no_address' };
   const choice = await getChoice(mine);
   // Whole-site asks list every subdomain the certificate logs know (Techloq has no wildcard entries).
-  // The block-page panel shows the lookup live: "finding addresses", then the list that goes in the email.
+  // The block-page panel shows the lookup live: "finding addresses", then the list that goes in the request.
   let allow = null;
   if (scope !== 'page') {
     if (tabId) chrome.tabs.sendMessage(tabId, { type: 'allow_progress' }).catch(() => {});
@@ -113,7 +115,7 @@ async function doStartRequest(rawUrl, reason, fromBlockPage, scope, via, mine, t
   }
   const mail = buildEmail(s, url, new Date(), reason, scope, choice, allow);
   const { history } = await chrome.storage.local.get({ history: [] });
-  return sendMail(s, mail, {
+  return (isLinkMode(s) ? sendLink : sendMail)(s, mail, {
     kind: 'site', url, domain: mail.domain, fromBlockPage: !!fromBlockPage,
     scope: mail.scope, target: mail.target, via: via || 'popup', reason: choice,
     nth: matchRequests(history, url).length + 1
@@ -127,10 +129,10 @@ function startPartsRequest(pageUrl, items, samples, mine) {
     const list = (items || []).map(String).filter(Boolean);
     if (!page || !list.length) return { ok: false, error: 'bad_url' };
     const s = await getSettings();
-    if (!isEmail(s.to)) return { ok: false, error: 'no_address' };
+    if (!hasDestination(s, isEmail)) return { ok: false, error: 'no_address' };
     const choice = await getChoice(mine);
     const mail = buildPartsEmail(s, page, list, new Date(), choice);
-    return sendMail(s, mail, {
+    return (isLinkMode(s) ? sendLink : sendMail)(s, mail, {
       kind: 'parts', url: page, domain: mail.domain, fromBlockPage: false, items: list,
       samples: (samples || []).map(String).filter(Boolean).slice(0, 40), via: 'popup', reason: choice
     });
@@ -148,6 +150,14 @@ function startReminder(key) {
     const jobs = await getJobs();
     if (Object.values(jobs).some(j => j.kind === 'reminder' && j.entryKey === key && j.state === 'sending')) return { ok: false, error: 'busy' };
     const s = await getSettings();
+    // A request that went to a desk gets its reminder there too.
+    if (entry.via === 'link') {
+      if (!normKey(s.deskKey)) return { ok: false, error: 'desk_no_key' };
+      return sendLink(s, { domain: entry.domain }, {
+        kind: 'reminder', url: entry.url, domain: entry.domain, entryKey: key, via: 'notification',
+        ref: entry.id, refAt: entry.at, scope: entry.scope, target: entry.target, items: entry.items, reason: entry.reason
+      });
+    }
     if (!isEmail(s.to)) return { ok: false, error: 'no_address' };
     const mail = buildReminderEmail(s, entry, Date.now());
     if (!isEmail(mail.to)) return { ok: false, error: 'no_address' };
@@ -171,10 +181,48 @@ async function sendMail(s, mail, meta) {
   return { ok: true, id: job.id };
 }
 
+// 1.6.0 Link mode: the request is locked here with the desk's public key and sent to the desk. No Gmail, no tab.
+async function sendLink(s, mail, meta) {
+  const base = deskBase(DESK_URL);
+  const job = Object.assign({
+    id: crypto.randomUUID(), tabId: null, to: DEST_LABEL, link: true, subject: mail.subject || '',
+    composeUrl: '', html: '', state: 'sending', error: '', started: Date.now()
+  }, meta);
+  await putJob(job);
+  chrome.alarms.create('job:' + job.id, { delayInMinutes: JOB_TIMEOUT_MIN });
+  const payload = deskPayload(s, {
+    id: job.id, kind: job.kind, at: job.started, url: job.url, domain: job.domain, scope: job.scope, target: job.target,
+    blockReason: mail.reason || '', reason: job.reason, items: job.items, nth: job.nth, ref: job.ref, refAt: job.refAt,
+    ver: chrome.runtime.getManifest().version
+  });
+  sendToDesk(base, s.deskKey, payload).then(async r => {
+    const now = (await getJobs())[job.id] || job;
+    if (r.ok) { now.deskId = r.id; now.deskFp = r.fp; }
+    // The desk no longer takes this key: back to Email, so the next send goes by email. Nothing typed is lost.
+    if (!r.ok && r.error === 'desk_key_off') await chrome.storage.local.set({ sendMode: 'email', keyOk: false, keyOff: Date.now() });
+    await finish(now, r.ok ? 'sent' : 'error', r.ok ? '' : r.error);
+  }).catch(async e => {
+    const now = (await getJobs())[job.id] || job;
+    await finish(now, 'error', 'desk_unreachable');
+  });
+  return { ok: true, id: job.id };
+}
+
+// Settings: the personal key is checked with the desk as soon as it is typed.
+async function checkMyKey(raw) {
+  const r = await checkDeskKey(DESK_URL, raw);
+  if (!r.ok) return r;
+  const key = normKey(raw);
+  if (r.valid) await chrome.storage.local.set({ deskKey: key ? 'SR-' + key.slice(2).match(/.{4}/g).join('-') : '', keyOk: true, keyOff: 0 });
+  else await chrome.storage.local.set({ keyOk: false, sendMode: 'email' });
+  return { ok: true, valid: r.valid, off: !!r.off, format: r.format !== false };
+}
+
 async function openCompose(id) {
   const jobs = await getJobs();
   const job = jobs[id];
   if (!job) return { ok: false };
+  if (job.link) { chrome.runtime.openOptionsPage(); return { ok: true, settings: true }; }
   try {
     const tab = await chrome.tabs.get(job.tabId);
     await chrome.tabs.update(tab.id, { active: true });
@@ -196,6 +244,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return panelInfo(msg, sender);
       case 'job_status':
         return jobStatus(msg.id);
+      case 'check_key':
+        return checkMyKey(msg.key);
       case 'save_to':
         return saveTo(msg.to);
       case 'request_parts':
@@ -635,14 +685,22 @@ const JOB_ERRORS = {
   no_send_button: 'Gmail opened, but the Send button was not found.',
   no_confirmation: 'Could not confirm that Gmail sent the email.',
   timeout: 'Gmail took too long. The email may not have been sent.',
-  tab_closed: 'The email tab was closed before it was sent.'
+  tab_closed: 'The email tab was closed before it was sent.',
+  bad_desk: 'The request desk could not be used.',
+  desk_unreachable: 'The request desk could not be reached. Check your connection and try again.',
+  desk_not_ready: 'The request desk is not set up yet.',
+  desk_bad_key: 'The request desk sent a key that does not work.',
+  desk_busy: 'The request desk got too many requests. Please try again in a few minutes.',
+  desk_refused: 'The request desk did not take the request. Please try again.',
+  desk_no_key: 'Link needs your personal key. Add it in Settings, or send by email.',
+  desk_key_off: 'Your key no longer works, so this was not sent. Please send your request by email.'
 };
 
 async function notifyJobResult(job) {
   const what = job.kind === 'reminder' ? 'Reminder' : 'Request';
   const ok = job.state === 'sent';
-  let msg = ok ? 'The email was sent from your Gmail.' : (JOB_ERRORS[job.error] || (String(job.error || '').startsWith('gmail_said:') ? 'Gmail said: ' + job.error.slice(11).trim() : 'Something went wrong.'));
-  if (!ok) msg += ' Click to open the email.';
+  let msg = ok ? (job.link ? 'It went to ' + job.to + '.' : 'The email was sent from your Gmail.') : (JOB_ERRORS[job.error] || (String(job.error || '').startsWith('gmail_said:') ? 'Gmail said: ' + job.error.slice(11).trim() : 'Something went wrong.'));
+  if (!ok && !job.link) msg += ' Click to open the email.';
   if (ok) {
     const { callNumber } = await chrome.storage.local.get({ callNumber: '' });
     if (String(callNumber || '').trim()) msg += ' Call ' + String(callNumber).trim() + ' so they review your request.';
@@ -1010,14 +1068,15 @@ async function panelInfo(msg, sender) {
   }
   const st = await chrome.storage.local.get({
     to: DEFAULTS.to, reasons: null, defaultReason: DEFAULTS.defaultReason, history: [],
-    blockPanel: DEFAULTS.blockPanel, blockPanelAuto: DEFAULTS.blockPanelAuto
+    blockPanel: DEFAULTS.blockPanel, blockPanelAuto: DEFAULTS.blockPanelAuto,
+    sendMode: DEFAULTS.sendMode, deskKey: DEFAULTS.deskKey, keyOk: DEFAULTS.keyOk
   });
   const list = normalizeReasons(st.reasons);
   const hit = url ? st.history.find(h => h.url === url && h.kind !== 'parts') : null;
   return {
     ok: true, url, guess, why: cleanReason(msg.why),
     targets: url ? { site: scopeTarget(url, 'site'), page: scopeTarget(url, 'page') } : null,
-    hasTo: isEmail(st.to), to: isEmail(st.to) ? String(st.to).trim() : '',
+    hasTo: hasDestination(st, isEmail), to: destLabel(st, isEmail), link: isLinkMode(st),
     reasons: list.map(r => ({ id: r.id, label: r.label, text: r.text })),
     defaultReason: defaultReasonId(list, st.defaultReason),
     settings: { blockPanel: st.blockPanel !== false, blockPanelAuto: st.blockPanelAuto !== false },

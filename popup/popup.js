@@ -3,6 +3,7 @@ import { checkKey } from '../shared/approval.js';
 import { isBlockPage, extractBlockedUrl, cleanCandidate, cleanReason, domainOf, DEFAULTS, isEmail, scopeTarget } from '../shared/url.js';
 import { normalizeReasons, defaultReasonId, reasonSummary, cleanDetails, DETAILS_MAX } from '../shared/reasons.js';
 import { requestedInfo, matchRequests, fmtWhen, countLine, metaLine } from '../shared/requested.js';
+import { hasDestination } from '../shared/desk.js';
 
 const $ = id => document.getElementById(id);
 let currentJobId = null;
@@ -14,7 +15,15 @@ const MESSAGES = {
   no_send_button: 'Gmail opened, but the Send button was not found.',
   no_confirmation: 'Could not confirm that Gmail sent the email.',
   timeout: 'Gmail took too long. The email may not have been sent.',
-  tab_closed: 'The email tab was closed before it was sent.'
+  tab_closed: 'The email tab was closed before it was sent.',
+  bad_desk: 'The request desk could not be used.',
+  desk_unreachable: 'The request desk could not be reached. Check your connection and try again.',
+  desk_not_ready: 'The request desk is not set up yet.',
+  desk_bad_key: 'The request desk sent a key that does not work.',
+  desk_busy: 'The request desk got too many requests. Please try again in a few minutes.',
+  desk_refused: 'The request desk did not take the request. Please try again.',
+  desk_no_key: 'Link needs your personal key. Add it in Settings, or send by email.',
+  desk_key_off: 'Your key no longer works, so this was not sent. Please send your request by email.'
 };
 
 function showStatus(state, text, canOpen) {
@@ -50,7 +59,7 @@ function renderJob(job) {
     });
     if (new URLSearchParams(location.search).has('window')) setTimeout(() => window.close(), 6000);
   } else {
-    showStatus('error', errorText(job.error), true);
+    showStatus('error', errorText(job.error), !job.link);
     setBusy(false);
   }
 }
@@ -271,8 +280,8 @@ async function init() {
 
 // ---- Where requests go (no address is built in) ----
 async function hasAddress() {
-  const { to } = await chrome.storage.local.get({ to: DEFAULTS.to });
-  return isEmail(to);
+  const s = await chrome.storage.local.get({ to: DEFAULTS.to, sendMode: DEFAULTS.sendMode, deskKey: DEFAULTS.deskKey, keyOk: DEFAULTS.keyOk });
+  return hasDestination(s, isEmail);
 }
 
 function showToSetup(focus) {
@@ -514,6 +523,7 @@ $('openSettings').addEventListener('click', () => chrome.runtime.openOptionsPage
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.to && isEmail(changes.to.newValue)) $('toSetup').hidden = true;
+  if (area === 'local' && (changes.sendMode || changes.deskKey || changes.keyOk)) hasAddress().then(ok => { if (ok) $('toSetup').hidden = true; });
   if ((area === 'local' && changes.history) || (area === 'session' && changes.checking)) loadHistory();
   if (area === 'local' && changes.history) renderAlready();
   if (area === 'session' && changes.status && changes.status.newValue) {

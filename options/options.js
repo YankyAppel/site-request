@@ -1,4 +1,5 @@
 import { DEFAULTS, isEmail, bodyTemplate } from '../shared/url.js';
+import { normKey, showKey, hasKey } from '../shared/desk.js';
 import { compareVersions } from '../shared/update.js';
 import { normalizeReasons, addReason, updateReason, deleteReason, moveReason, defaultReasonId, reasonSummary, LABEL_MAX, TEXT_MAX } from '../shared/reasons.js';
 
@@ -80,13 +81,122 @@ setupSide();
 async function load() {
   const s = await chrome.storage.local.get(DEFAULTS);
   for (const f of FIELDS) $(f).value = s[f];
+  $('deskKey').value = s.deskKey ? showKey(s.deskKey) : '';
+  linkOn = s.sendMode === 'link' && hasKey(s);
+  renderMode(s.sendMode === 'link' && hasKey(s) ? 'link' : 'email');
+  if (s.sendMode === 'link' && hasKey(s)) keyMsg('ok', '\u2713 Key accepted');
+  else if (s.keyOff && s.deskKey) keyMsg('bad', 'This key no longer works. Requests go by email.');
+  // a key that was accepted before is checked again quietly
+  if (s.deskKey && s.keyOk) checkNow(true);
   $('body').value = bodyTemplate(s);
   $('checkApproved').checked = !!s.checkApproved;
   $('remind').checked = !!s.remind;
   $('htmlMail').checked = s.htmlMail !== false;
   renderBlockPanel(s.blockPanel !== false, s.blockPanelAuto !== false);
-  showViews(!!String(s.to || '').trim());
+  showViews(isSetUp(s));
 }
+
+// ---- 1.6.0: Email / Link. Link works only with a personal key the desk accepts. ----
+let mode = 'email';
+function isSetUp(s) {
+  return s.sendMode === 'link' ? hasKey(s) : !!String(s.to || '').trim();
+}
+function renderMode(m) {
+  mode = m;
+  for (const b of document.querySelectorAll('.seg button')) {
+    const on = b.dataset.mode === m;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', on ? 'true' : 'false');
+  }
+  $('toSec').hidden = m === 'link';
+  $('keySec').hidden = m !== 'link';
+  $('emailOff').hidden = m !== 'link';
+  renderHint();
+}
+let linkOn = false;
+function renderHint() {
+  $('modeHint').textContent = mode !== 'link'
+    ? 'Requests are sent as an email from your Gmail.'
+    : linkOn ? 'Requests go straight to your network company\'s request desk. No email is sent.'
+      : 'Enter your key to turn Link on. Until it is accepted, requests go by email.';
+}
+function keyMsg(cls, text) {
+  $('keyMsg').className = 'kmsg' + (cls ? ' ' + cls : '');
+  $('keyMsg').textContent = text || '';
+}
+const KEY_ERR = {
+  desk_unreachable: 'Could not reach the request desk. Check your connection and try again.',
+  desk_not_ready: 'The request desk is not set up yet.',
+  desk_busy: 'Too many tries. Please wait a few minutes.'
+};
+let checking = 0;
+async function checkNow(quiet) {
+  const raw = $('deskKey').value.trim();
+  const n = ++checking;
+  if (!raw) { keyMsg('', ''); return; }
+  if (!normKey(raw)) {
+    if (!quiet) keyMsg('bad', 'This key isn\'t valid');
+    await chrome.storage.local.set({ keyOk: false, sendMode: 'email' });
+    linkOn = false; renderHint();
+    return;
+  }
+  if (!quiet) keyMsg('', 'Checking\u2026');
+  let r = null;
+  try { r = await chrome.runtime.sendMessage({ type: 'check_key', key: raw }); } catch (e) { r = null; }
+  if (n !== checking) return;
+  if (!r || !r.ok) {
+    // no answer: nothing changes, so a key that worked keeps working
+    if (!quiet) keyMsg('bad', KEY_ERR[r && r.error] || 'Could not check the key. Please try again.');
+    return;
+  }
+  if (r.valid) {
+    $('deskKey').value = showKey(raw);
+    linkOn = mode === 'link';
+    if (linkOn) await chrome.storage.local.set({ sendMode: 'link' });
+    keyMsg('ok', '\u2713 Key accepted');
+  } else {
+    linkOn = false;
+    keyMsg('bad', r.off ? 'This key no longer works. Requests go by email.' : 'This key isn\'t valid');
+  }
+  renderHint();
+  showViews(isSetUp(await chrome.storage.local.get(DEFAULTS)));
+}
+for (const b of document.querySelectorAll('.seg button')) {
+  b.addEventListener('click', async () => {
+    const m = b.dataset.mode;
+    if (m === mode) return;
+    renderMode(m);
+    if (m === 'email') {
+      linkOn = false;
+      await chrome.storage.local.set({ sendMode: 'email' });
+    } else {
+      const s = await chrome.storage.local.get(DEFAULTS);
+      linkOn = hasKey(s);
+      if (linkOn) { await chrome.storage.local.set({ sendMode: 'link' }); keyMsg('ok', '\u2713 Key accepted'); checkNow(true); }
+      else if ($('deskKey').value.trim()) checkNow(false);
+      else { keyMsg('', ''); setTimeout(() => $('deskKey').focus(), 0); }
+    }
+    renderHint();
+    showViews(isSetUp(await chrome.storage.local.get(DEFAULTS)));
+  });
+}
+$('checkKey').addEventListener('click', () => checkNow(false));
+$('deskKey').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); checkNow(false); } });
+$('deskKey').addEventListener('paste', () => setTimeout(() => checkNow(false), 0));
+let keyTimer = 0;
+$('deskKey').addEventListener('input', async () => {
+  clearTimeout(keyTimer);
+  const raw = $('deskKey').value.trim();
+  // a changed key is not the accepted one any more: Link waits for the new key to be checked
+  keyMsg('', '');
+  if (linkOn) { linkOn = false; await chrome.storage.local.set({ keyOk: false, sendMode: 'email' }); renderHint(); }
+  if (normKey(raw)) keyTimer = setTimeout(() => checkNow(false), 400);
+});
+// Sending found the key turned off: show it here too.
+chrome.storage.onChanged.addListener((ch, area) => {
+  if (area !== 'local') return;
+  if (ch.keyOff && ch.keyOff.newValue) { linkOn = false; renderMode('email'); keyMsg('bad', 'This key no longer works. Requests go by email.'); }
+});
 
 function renderBlockPanel(on, auto) {
   $('blockPanel').checked = on;
@@ -333,7 +443,7 @@ $('form').addEventListener('submit', async e => {
     subject: $('subject').value || DEFAULTS.subject,
     body: $('body').value || DEFAULTS.body
   });
-  showViews(!!to);
+  showViews(isSetUp(await chrome.storage.local.get(DEFAULTS)));
   $('saved').hidden = false;
   setTimeout(() => { $('saved').hidden = true; }, 2000);
 });
