@@ -1,6 +1,6 @@
 import {
   DEFAULTS, isBlockPage, composeUrl, isEmail, cleanCandidate, buildEmail, buildPartsEmail, buildReminderEmail, extractBlockedUrl,
-  cleanReason, scopeTarget
+  cleanReason, scopeTarget, baseDomain, fetchSubdomains, mergedAllowList
 } from './shared/url.js';
 import { checkLatest, compareVersions } from './shared/update.js';
 import {
@@ -93,17 +93,25 @@ function serial(p) {
   return p;
 }
 
-function startRequest(rawUrl, reason, fromBlockPage, scope, via, mine) {
-  return serial(doStartRequest(rawUrl, reason, fromBlockPage, scope, via, mine));
+function startRequest(rawUrl, reason, fromBlockPage, scope, via, mine, tabId) {
+  return serial(doStartRequest(rawUrl, reason, fromBlockPage, scope, via, mine, tabId));
 }
 
-async function doStartRequest(rawUrl, reason, fromBlockPage, scope, via, mine) {
+async function doStartRequest(rawUrl, reason, fromBlockPage, scope, via, mine, tabId) {
   const url = cleanCandidate(rawUrl);
   if (!url) return { ok: false, error: 'bad_url' };
   const s = await getSettings();
   if (!isEmail(s.to)) return { ok: false, error: 'no_address' };
   const choice = await getChoice(mine);
-  const mail = buildEmail(s, url, new Date(), reason, scope, choice);
+  // Whole-site asks list every subdomain the certificate logs know (Techloq has no wildcard entries).
+  // The block-page panel shows the lookup live: "finding addresses", then the list that goes in the email.
+  let allow = null;
+  if (scope !== 'page') {
+    if (tabId) chrome.tabs.sendMessage(tabId, { type: 'allow_progress' }).catch(() => {});
+    allow = await fetchSubdomains(baseDomain(hostOf(url))).catch(() => []);
+    if (tabId) chrome.tabs.sendMessage(tabId, { type: 'allow_list', items: mergedAllowList(url, allow) }).catch(() => {});
+  }
+  const mail = buildEmail(s, url, new Date(), reason, scope, choice, allow);
   const { history } = await chrome.storage.local.get({ history: [] });
   return sendMail(s, mail, {
     kind: 'site', url, domain: mail.domain, fromBlockPage: !!fromBlockPage,
@@ -181,7 +189,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   (async () => {
     switch (msg && msg.type) {
       case 'request':
-        return startRequest(msg.url, msg.reason, msg.fromBlockPage, msg.scope, msg.via === 'panel' && sender.tab ? 'panel' : 'popup', msg.mine);
+        return startRequest(msg.url, msg.reason, msg.fromBlockPage, msg.scope, msg.via === 'panel' && sender.tab ? 'panel' : 'popup', msg.mine, sender.tab && sender.tab.id);
       case 'panel_info':
         return panelInfo(msg, sender);
       case 'job_status':

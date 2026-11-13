@@ -214,19 +214,76 @@ export function baseDomain(host) {
   return parts.slice(-(TWO_PART_TLDS.test(host) ? 3 : 2)).join('.');
 }
 
-// What a request asks for: 'site' = the whole domain as a wildcard, 'page' = the exact address.
+// What a request asks for: 'site' = the whole domain, 'page' = the exact address.
+// Techloq has no wildcard entries, so a whole-site ask is the plain base domain;
+// the addresses to allow, one per line, come from siteAllowList().
 export function scopeTarget(url, scope) {
   if (scope === 'page') return url;
   let host = '';
   try { host = new URL(url).hostname.toLowerCase(); } catch (e) { return url; }
   if (/^[\d.]+$/.test(host) || host.includes(':')) return host;
-  return '*.' + baseDomain(host);
+  return baseDomain(host);
+}
+
+// The addresses a filter that cannot allow wildcards needs for a whole site, one per line:
+// the host you were on, the bare domain, and its www. twin. IP addresses stay a single host.
+export function siteAllowList(url) {
+  let host = '';
+  try { host = new URL(url).hostname.toLowerCase(); } catch (e) { return [url]; }
+  if (/^[\d.]+$/.test(host) || host.includes(':')) return [host];
+  const base = baseDomain(host);
+  return [...new Set([host, base, 'www.' + base])];
 }
 
 export const ASK = {
-  site: 'Please open this whole site for my account, including all of its pages:',
+  site: 'Please open this whole site for my account, including all of its pages. Each address below needs its own allow line (a wildcard like *.example.com cannot be entered):',
   page: 'Please open just this one page for my account (not the whole site):'
 };
+
+// The subdomains of a domain the public certificate logs know about, one name per line.
+// Techloq has no wildcard entries, so each known subdomain needs its own allow line.
+// Two sources are tried: crt.sh, then the Cert Spotter API when crt.sh is down or slow.
+// Returns [] on any failure — the request still goes out with the basic addresses.
+export async function fetchSubdomains(base, max) {
+  max = max || 40;
+  base = String(base || '').toLowerCase();
+  if (!base || /^[\d.]+$/.test(base) || base.includes(':')) return [];
+  const keep = n => {
+    const name = String(n || '').toLowerCase().replace(/^\*\./, '').replace(/\.$/, '');
+    return (name === base || name.endsWith('.' + base)) && !/[\s*]/.test(name) ? name : '';
+  };
+  const finish = set => [...set].sort((a, b) => a.length - b.length || a.localeCompare(b)).slice(0, max);
+  for (const source of ['crtsh', 'certspotter']) {
+    try {
+      const url = source === 'crtsh'
+        ? 'https://crt.sh/?q=%25.' + encodeURIComponent(base) + '&output=json'
+        : 'https://api.certspotter.com/v1/issuances?domain=' + encodeURIComponent(base) +
+          '&include_subdomains=true&expand=dns_names';
+      const r = await fetch(url, { signal: AbortSignal.timeout(12000) });
+      if (!r.ok) continue;      // crt.sh 502s under load — move to the next source
+      const rows = await r.json();
+      const out = new Set();
+      for (const row of Array.isArray(rows) ? rows : []) {
+        const names = source === 'crtsh'
+          ? String(row.common_name || '') + '\n' + String(row.name_value || '')
+          : (row.dns_names || []).join('\n');
+        for (const h of String(names).split(/\s+/)) {
+          const name = keep(h);
+          if (name) out.add(name);
+        }
+      }
+      if (out.size) return finish(out);
+    } catch (e) { /* timeout or bad JSON — try the next source */ }
+  }
+  return [];
+}
+
+// The full whole-site list: the host, the bare domain, www.<domain>, plus the subdomains crt.sh knows.
+export function mergedAllowList(url, subdomains) {
+  const seen = new Set(siteAllowList(url));
+  const rest = (subdomains || []).filter(h => !seen.has(h));
+  return [...seen, ...rest];
+}
 
 export function isEmail(s) {
   return /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(String(s || '').trim());
@@ -258,18 +315,20 @@ function fillBody(tpl, vars, scope) {
   if (!/\{(ask|target)\}/i.test(t)) {
     body += scope === 'page'
       ? '\n\nPlease open just this page, not the whole site.'
-      : '\n\nPlease open the whole site (' + vars.target + ').';
+      : '\n\nPlease open the whole site:\n' + vars.target;
   }
   if (!/\{why\}/i.test(t) && vars.why) body += '\n\n' + vars.why;
   return body.replace(/\n{3,}/g, '\n\n');
 }
 
 // mine = the reason you chose: { label, text, details } or null.
-export function buildEmail(s, url, now, reason, scope, mine) {
+// allow = extra whole-site addresses (subdomains from crt.sh) merged into siteAllowList.
+export function buildEmail(s, url, now, reason, scope, mine, allow) {
   scope = scope === 'page' ? 'page' : 'site';
   const vars = {
     url, domain: domainOf(url), date: formatDate(now || new Date()), reason: cleanReason(reason),
-    target: scopeTarget(url, scope), ask: ASK[scope], page: scope === 'site' ? url : '', why: reasonBlock(mine)
+    target: scope === 'site' ? mergedAllowList(url, allow).join('\n') : url, ask: ASK[scope],
+    page: scope === 'site' ? url : '', why: reasonBlock(mine)
   };
   return {
     to: String(s.to || '').trim(),

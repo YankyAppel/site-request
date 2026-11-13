@@ -355,7 +355,7 @@ function renderScope() {
   if (url) {
     $('scopeNote').textContent = scope === 'page'
       ? 'Only this address, not the rest of the site.'
-      : 'Asks for ' + scopeTarget(url, 'site') + ' (every page of the site).';
+      : 'Asks for ' + scopeTarget(url, 'site') + ' and its known subdomains (every page of the site).';
   }
 }
 
