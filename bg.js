@@ -180,6 +180,8 @@ async function openCompose(id) {
     await chrome.tabs.update(tab.id, { active: true });
     await chrome.windows.update(tab.windowId, { focused: true });
   } catch (e) {
+    // The compose tab is gone (closed or reloaded) — open a fresh one.
+    console.warn('site-request: could not focus the compose tab, opening a new one:', e);
     await chrome.tabs.create({ url: job.composeUrl, active: true });
   }
   return { ok: true };
@@ -435,6 +437,8 @@ async function readBody(res) {
 }
 
 async function probe(url) {
+  try { if (!/^https?:$/.test(new URL(url).protocol)) return { url, error: 'bad_scheme' }; }
+  catch (e) { return { url, error: 'bad_url' }; }
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), CHECK_TIMEOUT_MS);
   try {
@@ -696,7 +700,10 @@ async function doReminderCheck() {
         requireInteraction: true,
         priority: 1
       });
-    } catch (e) { /* notifications turned off */ }
+    } catch (e) {
+      // Notifications may be off for this profile — the request itself is fine.
+      console.warn('site-request: could not show the reminder notification:', e);
+    }
   }
   return { ok: true, offered: due.length };
 }
@@ -909,13 +916,16 @@ async function bodyCheck(d) {
   const timer = setTimeout(() => ctl.abort(), 8000);
   let probeResult;
   try {
+    if (!/^https?:$/.test(new URL(d.url).protocol)) { probeResult = { error: 'bad_scheme' }; return; }
     const res = await fetch(d.url, { credentials: 'omit', cache: 'no-store', redirect: 'follow', signal: ctl.signal });
     let body = '';
     if (/text\/html|xml|text\/plain/i.test(res.headers.get('content-type') || '')) body = (await readBody(res)).slice(0, 65536);
     else if (res.body) res.body.cancel().catch(() => {});
     probeResult = { finalUrl: res.url, body };
   } catch (e) {
+    // A blocked or offline address is a normal result here, not a code failure.
     probeResult = { error: String(e && e.message || e) };
+    console.warn('site-request: body check failed for ' + d.url + ':', e);
   } finally {
     clearTimeout(timer);
   }

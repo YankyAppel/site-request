@@ -273,7 +273,10 @@ export async function fetchSubdomains(base, max) {
         }
       }
       if (out.size) return finish(out);
-    } catch (e) { /* timeout or bad JSON — try the next source */ }
+    } catch (e) {
+      // Timeout or bad JSON from this source — fall through to the next one.
+      console.warn('site-request: ' + source + ' subdomain lookup failed:', e);
+    }
   }
   return [];
 }
