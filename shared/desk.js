@@ -93,6 +93,11 @@ export async function lockForDesk(pubJwk, deskId, obj) {
 }
 
 async function call(url, opts, ms) {
+  // Only the allow-listed schemes deskBase() produces are fetched.
+  let u;
+  try { u = new URL(url); } catch (e) { return { status: 0, data: { error: 'bad_scheme' } }; }
+  const local = /^(localhost|127\.0\.0\.1)$/.test(u.hostname);
+  if (u.protocol !== 'https:' && !(local && u.protocol === 'http:')) return { status: 0, data: { error: 'bad_scheme' } };
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms || 15000);
   try {
